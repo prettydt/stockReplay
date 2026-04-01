@@ -242,8 +242,8 @@ def fetch_batch(codes: List[str]) -> Dict[str, dict]:
     return result
 
 
-def save_batch(batch_data: Dict[str, dict], min_amount: float = 1e8):
-    """批量写入数据库，成交额低于 min_amount（默认1亿）的股票不写入"""
+def save_batch(batch_data: Dict[str, dict]):
+    """批量写入数据库"""
     if not batch_data:
         return
     conn = get_conn()
@@ -251,8 +251,6 @@ def save_batch(batch_data: Dict[str, dict], min_amount: float = 1e8):
     rows = []
     names = []
     for code, d in batch_data.items():
-        if d.get("amount", 0) < min_amount:
-            continue
         ts = f"{d['date']} {d['time']}"
         rows.append((
             code, d["date"], ts,
@@ -289,6 +287,39 @@ def save_batch(batch_data: Dict[str, dict], min_amount: float = 1e8):
     conn.commit()
     conn.close()
     return len(rows)
+
+
+def get_active_codes(all_codes: List[str], min_amount: float = 1e8) -> List[str]:
+    """
+    返回前一交易日总成交额 >= min_amount 的股票代码列表。
+    若数据库中无历史数据（首次运行），返回全部代码。
+    """
+    try:
+        conn = get_conn()
+        cur = conn.cursor()
+        # 找到最近一个有数据的交易日
+        cur.execute("SELECT MAX(trade_date) AS d FROM tick")
+        row = cur.fetchone()
+        last_date = row["d"] if row else None
+        if not last_date:
+            conn.close()
+            print("[INFO] 无历史数据，本日采集全部股票")
+            return all_codes
+        # 查询该日各股票总成交额
+        cur.execute("""
+            SELECT code, MAX(amount) AS total_amount
+            FROM tick WHERE trade_date=%s GROUP BY code
+        """, (last_date,))
+        active = {r["code"] for r in cur.fetchall() if (r["total_amount"] or 0) >= min_amount}
+        conn.close()
+        result = [c for c in all_codes if c in active]
+        filtered = len(all_codes) - len(result)
+        print(f"[INFO] 前一交易日({last_date})成交额过滤："
+              f"保留 {len(result)} 只，排除 {filtered} 只（<{min_amount/1e8:.0f}亿）")
+        return result if result else all_codes  # 保底：若全被过滤则返回全部
+    except Exception as e:
+        print(f"[WARN] 活跃股票过滤失败：{e}，使用全部代码")
+        return all_codes
 
 
 def fetch_tick(code: str) -> Optional[dict]:
@@ -344,19 +375,28 @@ def run_all(interval: int = 10):
     all_codes = [s["code"] for s in stock_list]
     print(f"[INFO] 全A股模式：{len(all_codes)} 只，间隔 {interval}s，Ctrl+C 停止")
 
+    active_codes = get_active_codes(all_codes)  # 首次按前日成交额过滤
+    current_date = datetime.date.today()
+
     while True:
         if not is_trading():
             print(f"[{datetime.datetime.now().strftime('%H:%M:%S')}] 非交易时间，等待...")
             time.sleep(60)
             continue
 
+        # 每天第一轮刷新白名单
+        today = datetime.date.today()
+        if today != current_date:
+            current_date = today
+            active_codes = get_active_codes(all_codes)
+
         round_start = time.time()
         total_saved = 0
         valid_count = 0
 
         # 分批请求
-        for i in range(0, len(all_codes), BATCH_SIZE):
-            batch = all_codes[i:i + BATCH_SIZE]
+        for i in range(0, len(active_codes), BATCH_SIZE):
+            batch = active_codes[i:i + BATCH_SIZE]
             batch_data = fetch_batch(batch)
             n = save_batch(batch_data)
             total_saved += n or 0
@@ -364,7 +404,7 @@ def run_all(interval: int = 10):
 
         elapsed = time.time() - round_start
         now_str = datetime.datetime.now().strftime("%H:%M:%S")
-        print(f"[{now_str}] 采集完成：{valid_count} 只有效 / {len(all_codes)} 只，写入 {total_saved} 条，耗时 {elapsed:.1f}s")
+        print(f"[{now_str}] 采集完成：{valid_count} 只有效 / {len(active_codes)} 只，写入 {total_saved} 条，耗时 {elapsed:.1f}s")
 
         # 动态等待，确保整体间隔为 interval 秒
         wait = max(1, interval - elapsed)
