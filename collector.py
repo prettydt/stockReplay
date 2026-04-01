@@ -242,8 +242,8 @@ def fetch_batch(codes: List[str]) -> Dict[str, dict]:
     return result
 
 
-def save_batch(batch_data: Dict[str, dict]):
-    """批量写入数据库"""
+def save_batch(batch_data: Dict[str, dict], min_amount: float = 1e8):
+    """批量写入数据库，成交额低于 min_amount（默认1亿）的股票不写入"""
     if not batch_data:
         return
     conn = get_conn()
@@ -251,6 +251,8 @@ def save_batch(batch_data: Dict[str, dict]):
     rows = []
     names = []
     for code, d in batch_data.items():
+        if d.get("amount", 0) < min_amount:
+            continue
         ts = f"{d['date']} {d['time']}"
         rows.append((
             code, d["date"], ts,
