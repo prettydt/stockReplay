@@ -9,7 +9,8 @@
     python collector.py --all --interval 10
 """
 
-import sqlite3
+import pymysql
+import pymysql.cursors
 import time
 import datetime
 import argparse
@@ -18,7 +19,20 @@ import os
 import re
 from typing import Optional, List, Dict
 
-DB_PATH = os.path.join(os.path.dirname(__file__), "data", "stock.db")
+# MySQL 连接配置，可通过环境变量覆盖
+DB_CONFIG = {
+    "host":     os.environ.get("MYSQL_HOST", "127.0.0.1"),
+    "port":     int(os.environ.get("MYSQL_PORT", "3306")),
+    "user":     os.environ.get("MYSQL_USER", "root"),
+    "password": os.environ.get("MYSQL_PASSWORD", ""),
+    "database": os.environ.get("MYSQL_DB", "stock_replay"),
+    "charset":  "utf8mb4",
+    "cursorclass": pymysql.cursors.DictCursor,
+}
+
+
+def get_conn():
+    return pymysql.connect(**DB_CONFIG)
 
 # 新浪实时行情接口（支持批量，逗号分隔）
 SINA_URL = "http://hq.sinajs.cn/list={code}"
@@ -52,45 +66,45 @@ EMF_LIST_URLS = [
 
 
 def init_db():
-    conn = sqlite3.connect(DB_PATH)
+    conn = get_conn()
     cur = conn.cursor()
     cur.execute("""
         CREATE TABLE IF NOT EXISTS tick (
-            id        INTEGER PRIMARY KEY AUTOINCREMENT,
-            code      TEXT    NOT NULL,
-            trade_date TEXT   NOT NULL,
-            ts        TEXT    NOT NULL,
-            price     REAL    NOT NULL,
-            volume    REAL    NOT NULL,
-            amount    REAL    NOT NULL,
-            open      REAL    NOT NULL,
-            high      REAL    NOT NULL,
-            low       REAL    NOT NULL,
-            pre_close REAL    NOT NULL,
-            b1p REAL, b1v REAL, b2p REAL, b2v REAL, b3p REAL, b3v REAL,
-            b4p REAL, b4v REAL, b5p REAL, b5v REAL,
-            a1p REAL, a1v REAL, a2p REAL, a2v REAL, a3p REAL, a3v REAL,
-            a4p REAL, a4v REAL, a5p REAL, a5v REAL
-        )
+            id         INT AUTO_INCREMENT PRIMARY KEY,
+            code       VARCHAR(20) NOT NULL,
+            trade_date VARCHAR(10) NOT NULL,
+            ts         VARCHAR(20) NOT NULL,
+            price      DOUBLE NOT NULL,
+            volume     DOUBLE NOT NULL,
+            amount     DOUBLE NOT NULL,
+            `open`     DOUBLE NOT NULL,
+            high       DOUBLE NOT NULL,
+            low        DOUBLE NOT NULL,
+            pre_close  DOUBLE NOT NULL,
+            b1p DOUBLE, b1v DOUBLE, b2p DOUBLE, b2v DOUBLE,
+            b3p DOUBLE, b3v DOUBLE, b4p DOUBLE, b4v DOUBLE, b5p DOUBLE, b5v DOUBLE,
+            a1p DOUBLE, a1v DOUBLE, a2p DOUBLE, a2v DOUBLE,
+            a3p DOUBLE, a3v DOUBLE, a4p DOUBLE, a4v DOUBLE, a5p DOUBLE, a5v DOUBLE,
+            UNIQUE KEY ux_tick_code_ts (code, ts)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
     """)
     # 迁移：为旧数据库补加买卖五档字段
-    cur.execute("PRAGMA table_info(tick)")
-    existing_cols = {row[1] for row in cur.fetchall()}
+    cur.execute("""
+        SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
+        WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='tick'
+    """)
+    existing_cols = {row['COLUMN_NAME'] for row in cur.fetchall()}
     ob_cols = ["b1p","b1v","b2p","b2v","b3p","b3v","b4p","b4v","b5p","b5v",
                "a1p","a1v","a2p","a2v","a3p","a3v","a4p","a4v","a5p","a5v"]
     for col in ob_cols:
         if col not in existing_cols:
-            cur.execute(f"ALTER TABLE tick ADD COLUMN {col} REAL")
-    cur.execute("""
-        CREATE UNIQUE INDEX IF NOT EXISTS ux_tick_code_ts
-        ON tick(code, ts)
-    """)
+            cur.execute(f"ALTER TABLE tick ADD COLUMN {col} DOUBLE")
     # 股票名称缓存表
     cur.execute("""
         CREATE TABLE IF NOT EXISTS stock_name (
-            code TEXT PRIMARY KEY,
-            name TEXT NOT NULL
-        )
+            code VARCHAR(20) PRIMARY KEY,
+            name VARCHAR(50) NOT NULL
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
     """)
     conn.commit()
     conn.close()
@@ -232,7 +246,7 @@ def save_batch(batch_data: Dict[str, dict]):
     """批量写入数据库"""
     if not batch_data:
         return
-    conn = sqlite3.connect(DB_PATH)
+    conn = get_conn()
     cur = conn.cursor()
     rows = []
     names = []
@@ -252,22 +266,23 @@ def save_batch(batch_data: Dict[str, dict]):
         names.append((code, d["name"]))
     cur.executemany("""
         INSERT INTO tick
-        (code, trade_date, ts, price, volume, amount, open, high, low, pre_close,
+        (code, trade_date, ts, price, volume, amount, `open`, high, low, pre_close,
          b1p, b1v, b2p, b2v, b3p, b3v, b4p, b4v, b5p, b5v,
          a1p, a1v, a2p, a2v, a3p, a3v, a4p, a4v, a5p, a5v)
-        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
-        ON CONFLICT(code, ts) DO UPDATE SET
-          price=excluded.price, volume=excluded.volume, amount=excluded.amount,
-          open=excluded.open, high=excluded.high, low=excluded.low,
-          b1p=excluded.b1p, b1v=excluded.b1v, b2p=excluded.b2p, b2v=excluded.b2v,
-          b3p=excluded.b3p, b3v=excluded.b3v, b4p=excluded.b4p, b4v=excluded.b4v,
-          b5p=excluded.b5p, b5v=excluded.b5v,
-          a1p=excluded.a1p, a1v=excluded.a1v, a2p=excluded.a2p, a2v=excluded.a2v,
-          a3p=excluded.a3p, a3v=excluded.a3v, a4p=excluded.a4p, a4v=excluded.a4v,
-          a5p=excluded.a5p, a5v=excluded.a5v
+        VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+        ON DUPLICATE KEY UPDATE
+          price=VALUES(price), volume=VALUES(volume), amount=VALUES(amount),
+          `open`=VALUES(`open`), high=VALUES(high), low=VALUES(low),
+          b1p=VALUES(b1p), b1v=VALUES(b1v), b2p=VALUES(b2p), b2v=VALUES(b2v),
+          b3p=VALUES(b3p), b3v=VALUES(b3v), b4p=VALUES(b4p), b4v=VALUES(b4v),
+          b5p=VALUES(b5p), b5v=VALUES(b5v),
+          a1p=VALUES(a1p), a1v=VALUES(a1v), a2p=VALUES(a2p), a2v=VALUES(a2v),
+          a3p=VALUES(a3p), a3v=VALUES(a3v), a4p=VALUES(a4p), a4v=VALUES(a4v),
+          a5p=VALUES(a5p), a5v=VALUES(a5v)
     """, rows)
     cur.executemany("""
-        INSERT OR REPLACE INTO stock_name (code, name) VALUES (?,?)
+        INSERT INTO stock_name (code, name) VALUES (%s, %s)
+        ON DUPLICATE KEY UPDATE name=VALUES(name)
     """, names)
     conn.commit()
     conn.close()

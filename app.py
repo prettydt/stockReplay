@@ -4,22 +4,32 @@ Flask 后端
 访问: http://localhost:5000
 """
 
-import sqlite3
+import pymysql
+import pymysql.cursors
 import os
 from flask import Flask, render_template, jsonify, request
 
 app = Flask(__name__)
-DB_PATH = os.path.join(os.path.dirname(__file__), "data", "stock.db")
+
+# MySQL 连接配置，可通过环境变量覆盖
+DB_CONFIG = {
+    "host":     os.environ.get("MYSQL_HOST", "127.0.0.1"),
+    "port":     int(os.environ.get("MYSQL_PORT", "3306")),
+    "user":     os.environ.get("MYSQL_USER", "root"),
+    "password": os.environ.get("MYSQL_PASSWORD", ""),
+    "database": os.environ.get("MYSQL_DB", "stock_replay"),
+    "charset":  "utf8mb4",
+    "cursorclass": pymysql.cursors.DictCursor,
+}
 
 
 def query(sql: str, params: tuple = ()):
-    conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row
+    conn = pymysql.connect(**DB_CONFIG)
     cur = conn.cursor()
     cur.execute(sql, params)
     rows = cur.fetchall()
     conn.close()
-    return [dict(r) for r in rows]
+    return rows
 
 
 @app.route("/")
@@ -32,7 +42,7 @@ def api_dates():
     """返回某支股票所有有数据的日期"""
     code = request.args.get("code", "sz300502")
     rows = query(
-        "SELECT DISTINCT trade_date FROM tick WHERE code=? ORDER BY trade_date DESC",
+        "SELECT DISTINCT trade_date FROM tick WHERE code=%s ORDER BY trade_date DESC",
         (code,)
     )
     return jsonify([r["trade_date"] for r in rows])
@@ -61,10 +71,10 @@ def api_ticks():
     if not date:
         return jsonify([])
     rows = query(
-        """SELECT ts, price, volume, amount, open, high, low, pre_close,
+        """SELECT ts, price, volume, amount, `open`, high, low, pre_close,
                   b1p, b1v, b2p, b2v, b3p, b3v, b4p, b4v, b5p, b5v,
                   a1p, a1v, a2p, a2v, a3p, a3v, a4p, a4v, a5p, a5v
-           FROM tick WHERE code=? AND trade_date=? ORDER BY ts""",
+           FROM tick WHERE code=%s AND trade_date=%s ORDER BY ts""",
         (code, date)
     )
     return jsonify(rows)
@@ -80,8 +90,8 @@ def api_summary():
     if not date:
         return jsonify({})
     rows = query(
-        """SELECT price, volume, amount, open, high, low, pre_close, ts
-           FROM tick WHERE code=? AND trade_date=? ORDER BY ts""",
+        """SELECT price, volume, amount, `open`, high, low, pre_close, ts
+           FROM tick WHERE code=%s AND trade_date=%s ORDER BY ts""",
         (code, date)
     )
     if not rows:
@@ -111,8 +121,10 @@ def api_summary():
 
 
 if __name__ == "__main__":
-    # 数据库不存在时给出提示
-    if not os.path.exists(DB_PATH):
-        print("[WARN] 数据库不存在，请先运行 collector.py 采集数据")
-        print("       示例: python collector.py --code sz300502")
-    app.run(debug=True, port=5000)
+    try:
+        conn = pymysql.connect(**{k: v for k, v in DB_CONFIG.items() if k != 'cursorclass'})
+        conn.close()
+    except Exception as e:
+        print(f"[WARN] 无法连接 MySQL：{e}")
+        print("       请确保 MySQL 已启动，并创建数据库: CREATE DATABASE stock_replay;")
+    app.run(debug=True, port=5001)
