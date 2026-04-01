@@ -4,6 +4,7 @@
 <meta charset="UTF-8">
 <title>分时回放</title>
 <script src="https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/pinyin-pro@3/dist/index.js"></script>
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body { background: #0d1117; color: #c9d1d9; font-family: "PingFang SC", "Microsoft YaHei", sans-serif; font-size: 13px; }
@@ -403,10 +404,16 @@ stockInput.addEventListener("keydown", (e) => {
 });
 
 function searchCodes(kw) {
-  const k = kw.toLowerCase();
-  return allCodes.filter(c =>
-    c.code.includes(k) || c.name.toLowerCase().includes(k)
-  );
+  const k = kw.toLowerCase().replace(/\s+/g, '');
+  return allCodes.filter(c => {
+    if (c.code.includes(k)) return true;
+    if (c.name.toLowerCase().includes(k)) return true;
+    // 拼音全拼匹配（如 guitaomao → 贵州茅台）
+    if (c._pinyin && c._pinyin.includes(k)) return true;
+    // 声母首字母匹配（如 gzmt → 贵州茅台）
+    if (c._initials && c._initials.startsWith(k)) return true;
+    return false;
+  });
 }
 
 // ─── 加载股票列表 ────────────────────────────────────────────────────────────
@@ -416,6 +423,13 @@ async function loadCodes() {
   if (allCodes.length === 0) {
     stockInput.placeholder = "暂无数据，请先运行 collector.py";
     return;
+  }
+  // 预计算拼音（需 pinyin-pro 已加载）
+  if (typeof pinyinPro !== 'undefined') {
+    allCodes.forEach(c => {
+      c._pinyin   = pinyinPro.pinyin(c.name, { toneType: 'none', separator: '' });
+      c._initials = pinyinPro.pinyin(c.name, { pattern: 'first', toneType: 'none', separator: '' });
+    });
   }
   // 默认选第一只
   selectCode(allCodes[0]);
