@@ -1,0 +1,610 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>分时回放</title>
+<script src="https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js"></script>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: #0d1117; color: #c9d1d9; font-family: "PingFang SC", "Microsoft YaHei", sans-serif; font-size: 13px; }
+
+  /* 顶部工具栏 */
+  #toolbar {
+    display: flex; align-items: center; gap: 10px;
+    padding: 8px 14px; background: #161b22; border-bottom: 1px solid #30363d;
+  }
+  #toolbar label { color: #8b949e; }
+  #toolbar select, #toolbar input {
+    background: #21262d; border: 1px solid #30363d; color: #c9d1d9;
+    padding: 4px 8px; border-radius: 4px; outline: none; cursor: pointer;
+  }
+  #toolbar button {
+    padding: 4px 14px; border-radius: 4px; border: none; cursor: pointer;
+    font-size: 13px; color: #fff;
+  }
+  #btn-play   { background: #238636; }
+  #btn-pause  { background: #6e7681; }
+  #btn-reset  { background: #30363d; }
+  #speed-label { color: #8b949e; margin-left: 6px; }
+
+  /* 股票搜索框 */
+  #stock-search-wrap { position: relative; }
+  #stock-input {
+    width: 200px; background: #21262d; border: 1px solid #30363d;
+    color: #c9d1d9; padding: 4px 8px; border-radius: 4px; outline: none;
+    font-size: 13px;
+  }
+  #stock-input:focus { border-color: #58a6ff; }
+  #stock-dropdown {
+    display: none; position: absolute; top: 100%; left: 0; z-index: 999;
+    background: #161b22; border: 1px solid #30363d; border-radius: 4px;
+    max-height: 240px; overflow-y: auto; min-width: 220px; margin-top: 2px;
+  }
+  #stock-dropdown.open { display: block; }
+  .stock-opt {
+    padding: 6px 10px; cursor: pointer; font-size: 13px; white-space: nowrap;
+  }
+  .stock-opt:hover, .stock-opt.active { background: #21262d; }
+  .stock-opt .code { color: #58a6ff; margin-right: 8px; }
+  .stock-opt .name { color: #c9d1d9; }
+  .stock-opt .hit  { color: #f0a050; font-weight: bold; }
+
+  /* 回放时间大字 */
+  #replay-clock {
+    font-size: 22px; font-weight: bold; color: #58a6ff;
+    letter-spacing: 2px; min-width: 60px;
+  }
+
+  /* 信息栏 */
+  #info-bar {
+    display: flex; gap: 18px; flex-wrap: wrap;
+    padding: 7px 14px; background: #0d1117; border-bottom: 1px solid #21262d;
+  }
+  .info-item { display: flex; flex-direction: column; }
+  .info-title { color: #8b949e; font-size: 11px; }
+  .info-val   { font-size: 14px; font-weight: bold; }
+  .up   { color: #f6685e; }
+  .down { color: #3fb950; }
+  .flat { color: #c9d1d9; }
+
+  /* 进度条 */
+  #progress-wrap {
+    padding: 5px 14px; background: #0d1117;
+  }
+  #progress {
+    width: 100%; height: 4px; accent-color: #58a6ff; cursor: pointer;
+  }
+  #time-label { font-size: 11px; color: #8b949e; margin-top: 2px; }
+
+  /* 图表 + 盘口布局 */
+  #main-content { display: flex; align-items: flex-start; }
+  #charts-wrap  { flex: 1; min-width: 0; }
+  #chart-price  { width: 100%; height: 320px; }
+  #chart-volume { width: 100%; height: 120px; }
+
+  /* 买卖盘口面板 */
+  #orderbook {
+    width: 210px; flex-shrink: 0;
+    background: #0d1117; border-left: 1px solid #21262d;
+    padding: 0 0 8px 0; font-size: 12px;
+  }
+  #orderbook .ob-title {
+    padding: 7px 12px; color: #8b949e; font-size: 11px;
+    border-bottom: 1px solid #21262d; letter-spacing: 1px;
+  }
+  #orderbook table {
+    width: 100%; border-collapse: collapse;
+  }
+  #orderbook td {
+    padding: 4px 10px; white-space: nowrap;
+  }
+  #orderbook td:last-child { text-align: right; color: #8b949e; }
+  .ob-ask td:first-child { color: #3fb950; }
+  .ob-bid td:first-child { color: #f6685e; }
+  #ob-mid {
+    text-align: center; padding: 6px 0;
+    border-top: 1px solid #21262d; border-bottom: 1px solid #21262d;
+    font-size: 16px; font-weight: bold; letter-spacing: 1px;
+  }
+  #ob-mid .ob-pct { font-size: 11px; margin-left: 6px; font-weight: normal; }
+</style>
+</head>
+<body>
+
+<!-- 工具栏 -->
+<div id="toolbar">
+  <label>股票</label>
+  <div id="stock-search-wrap">
+    <input id="stock-input" type="text" placeholder="代码/名称搜索..." autocomplete="off">
+    <div id="stock-dropdown"></div>
+  </div>
+
+  <label>日期</label>
+  <select id="sel-date"></select>
+
+  <button id="btn-play"  onclick="play()">▶ 播放</button>
+  <button id="btn-pause" onclick="pause()">⏸ 暂停</button>
+  <button id="btn-reset" onclick="resetReplay()">⏮ 重置</button>
+
+  <span id="speed-label">倍速</span>
+  <select id="sel-speed">
+    <option value="1">1x</option>
+    <option value="2">2x</option>
+    <option value="5" selected>5x</option>
+    <option value="10">10x</option>
+    <option value="30">30x</option>
+    <option value="60">60x</option>
+  </select>
+</div>
+
+<!-- 信息栏 -->
+<div id="info-bar">
+  <div class="info-item"><span class="info-title">最新价</span><span id="iv-price"  class="info-val flat">--</span></div>
+  <div class="info-item"><span class="info-title">涨跌额</span><span id="iv-chg"    class="info-val flat">--</span></div>
+  <div class="info-item"><span class="info-title">涨跌幅</span><span id="iv-pct"    class="info-val flat">--</span></div>
+  <div class="info-item"><span class="info-title">今开</span>  <span id="iv-open"   class="info-val flat">--</span></div>
+  <div class="info-item"><span class="info-title">昨收</span>  <span id="iv-pre"    class="info-val flat">--</span></div>
+  <div class="info-item"><span class="info-title">最高</span>  <span id="iv-high"   class="info-val up">--</span></div>
+  <div class="info-item"><span class="info-title">最低</span>  <span id="iv-low"    class="info-val down">--</span></div>
+  <div class="info-item"><span class="info-title">成交量</span><span id="iv-vol"    class="info-val flat">--</span></div>
+  <div class="info-item"><span class="info-title">成交额</span><span id="iv-amt"    class="info-val flat">--</span></div>
+</div>
+
+<!-- 进度条 -->
+<div id="progress-wrap">
+  <div style="display:flex;align-items:center;gap:14px;margin-bottom:3px">
+    <span id="replay-clock">--:--</span>
+    <span id="time-label" style="color:#8b949e;font-size:11px"></span>
+  </div>
+  <input type="range" id="progress" min="0" value="0" step="1"
+         oninput="seekTo(parseInt(this.value))">
+<!-- 图表 + 盘口 -->
+<div id="main-content">
+  <div id="charts-wrap">
+    <div id="chart-price"></div>
+    <div id="chart-volume"></div>
+  </div>
+
+  <!-- 右侧买卖盘口 -->
+  <div id="orderbook">
+    <div class="ob-title">盘口</div>
+    <table>
+      <tr class="ob-ask" id="ob-a5-row"><td>卖五</td><td id="ob-a5-p">--</td><td id="ob-a5-v">--</td></tr>
+      <tr class="ob-ask" id="ob-a4-row"><td>卖四</td><td id="ob-a4-p">--</td><td id="ob-a4-v">--</td></tr>
+      <tr class="ob-ask" id="ob-a3-row"><td>卖三</td><td id="ob-a3-p">--</td><td id="ob-a3-v">--</td></tr>
+      <tr class="ob-ask" id="ob-a2-row"><td>卖二</td><td id="ob-a2-p">--</td><td id="ob-a2-v">--</td></tr>
+      <tr class="ob-ask" id="ob-a1-row"><td>卖一</td><td id="ob-a1-p">--</td><td id="ob-a1-v">--</td></tr>
+    </table>
+    <div id="ob-mid"><span id="ob-price" class="flat">--</span><span class="ob-pct" id="ob-pct"></span></div>
+    <table>
+      <tr class="ob-bid" id="ob-b1-row"><td>买一</td><td id="ob-b1-p">--</td><td id="ob-b1-v">--</td></tr>
+      <tr class="ob-bid" id="ob-b2-row"><td>买二</td><td id="ob-b2-p">--</td><td id="ob-b2-v">--</td></tr>
+      <tr class="ob-bid" id="ob-b3-row"><td>买三</td><td id="ob-b3-p">--</td><td id="ob-b3-v">--</td></tr>
+      <tr class="ob-bid" id="ob-b4-row"><td>买四</td><td id="ob-b4-p">--</td><td id="ob-b4-v">--</td></tr>
+      <tr class="ob-bid" id="ob-b5-row"><td>买五</td><td id="ob-b5-p">--</td><td id="ob-b5-v">--</td></tr>
+    </table>
+  </div>
+</div>
+
+<script>
+// ─── 状态 ────────────────────────────────────────────────────────────────────
+let allTicks   = [];   // 全量 tick 数组
+let cursor     = 0;    // 当前回放位置
+let timer      = null; // setInterval 句柄
+let summary    = {};   // 当日基本信息
+
+// ─── ECharts 初始化 ─────────────────────────────────────────────────────────
+const chartPrice  = echarts.init(document.getElementById("chart-price"),  "dark");
+const chartVolume = echarts.init(document.getElementById("chart-volume"), "dark");
+
+const BASE_PRICE_OPT = {
+  backgroundColor: "#0d1117",
+  animation: false,
+  grid: { top: 30, bottom: 30, left: 60, right: 20 },
+  tooltip: { trigger: "axis", axisPointer: { type: "cross" } },
+  xAxis: {
+    type: "category", data: [],
+    axisLine: { lineStyle: { color: "#30363d" } },
+    axisLabel: { color: "#8b949e", interval: "auto" },
+    splitLine: { show: false },
+  },
+  yAxis: {
+    type: "value", scale: true,
+    axisLine: { lineStyle: { color: "#30363d" } },
+    axisLabel: { color: "#8b949e" },
+    splitLine: { lineStyle: { color: "#21262d" } },
+  },
+  series: [
+    {
+      name: "分时价",
+      type: "line",
+      data: [],
+      smooth: false,
+      symbol: "none",
+      lineStyle: { color: "#58a6ff", width: 1.5 },
+      areaStyle: { color: new echarts.graphic.LinearGradient(0,0,0,1,
+        [{ offset:0, color:"rgba(88,166,255,0.3)" }, { offset:1, color:"rgba(88,166,255,0.02)" }])
+      },
+    },
+    {
+      name: "均价",
+      type: "line",
+      data: [],
+      smooth: false,
+      symbol: "none",
+      lineStyle: { color: "#f0a050", width: 1, type: "dashed" },
+    },
+    {
+      name: "昨收",
+      type: "line",
+      data: [],
+      smooth: false,
+      symbol: "none",
+      lineStyle: { color: "#8b949e", width: 1, type: "dashed" },
+    },
+  ],
+};
+
+const BASE_VOL_OPT = {
+  backgroundColor: "#0d1117",
+  animation: false,
+  grid: { top: 10, bottom: 30, left: 60, right: 20 },
+  tooltip: { trigger: "axis", axisPointer: { type: "shadow" } },
+  xAxis: {
+    type: "category", data: [],
+    axisLine: { lineStyle: { color: "#30363d" } },
+    axisLabel: { color: "#8b949e", interval: "auto" },
+  },
+  yAxis: {
+    type: "value",
+    axisLine: { lineStyle: { color: "#30363d" } },
+    axisLabel: { color: "#8b949e" },
+    splitLine: { lineStyle: { color: "#21262d" } },
+  },
+  series: [{
+    name: "成交量(手)",
+    type: "bar",
+    data: [],
+    itemStyle: { color: (p) => p.data[2] === "up" ? "#f6685e" : "#3fb950" },
+  }],
+};
+
+chartPrice.setOption(BASE_PRICE_OPT);
+chartVolume.setOption(BASE_VOL_OPT);
+
+window.addEventListener("resize", () => {
+  chartPrice.resize();
+  chartVolume.resize();
+});
+
+// ─── 买卖盘口更新 ─────────────────────────────────────────────────────────────
+function updateOrderBook(tick) {
+  const pre = summary.pre_close || 0;
+  if (!tick) {
+    for (let i = 1; i <= 5; i++) {
+      document.getElementById(`ob-a${i}-p`).textContent = '--';
+      document.getElementById(`ob-a${i}-v`).textContent = '--';
+      document.getElementById(`ob-b${i}-p`).textContent = '--';
+      document.getElementById(`ob-b${i}-v`).textContent = '--';
+    }
+    document.getElementById('ob-price').textContent = '--';
+    document.getElementById('ob-price').className = 'flat';
+    document.getElementById('ob-pct').textContent = '';
+    return;
+  }
+  for (let i = 1; i <= 5; i++) {
+    const ap = tick[`a${i}p`], av = tick[`a${i}v`];
+    const bp = tick[`b${i}p`], bv = tick[`b${i}v`];
+    document.getElementById(`ob-a${i}-p`).textContent = ap ? ap.toFixed(2) : '--';
+    document.getElementById(`ob-a${i}-v`).textContent = av != null ? av + '手' : '--';
+    document.getElementById(`ob-b${i}-p`).textContent = bp ? bp.toFixed(2) : '--';
+    document.getElementById(`ob-b${i}-v`).textContent = bv != null ? bv + '手' : '--';
+  }
+  const chg = pre ? (tick.price - pre) / pre * 100 : 0;
+  const cls = chg > 0.001 ? 'up' : chg < -0.001 ? 'down' : 'flat';
+  const el = document.getElementById('ob-price');
+  el.textContent = tick.price.toFixed(2);
+  el.className = cls;
+  document.getElementById('ob-pct').textContent =
+    pre ? (chg > 0 ? '+' : '') + chg.toFixed(2) + '%' : '';
+  document.getElementById('ob-pct').className = 'ob-pct ' + cls;
+}
+
+function colorClass(v) {
+  if (v > 0) return "up";
+  if (v < 0) return "down";
+  return "flat";
+}
+
+function setVal(id, text, cls) {
+  const el = document.getElementById(id);
+  el.textContent = text;
+  el.className = "info-val " + (cls || "flat");
+}
+
+// ─── 股票搜索 ────────────────────────────────────────────────────────────────
+let allCodes = [];      // [{code, name}, ...]
+let selectedCode = "";  // 当前选中的代码
+
+const stockInput    = document.getElementById("stock-input");
+const stockDropdown = document.getElementById("stock-dropdown");
+
+function highlight(str, kw) {
+  if (!kw) return str;
+  const idx = str.toLowerCase().indexOf(kw.toLowerCase());
+  if (idx < 0) return str;
+  return str.slice(0, idx)
+    + `<span class="hit">${str.slice(idx, idx + kw.length)}</span>`
+    + str.slice(idx + kw.length);
+}
+
+function showDropdown(items, kw) {
+  stockDropdown.innerHTML = "";
+  if (items.length === 0) {
+    stockDropdown.innerHTML = '<div class="stock-opt" style="color:#8b949e">无匹配结果</div>';
+  } else {
+    items.slice(0, 50).forEach((c, i) => {
+      const div = document.createElement("div");
+      div.className = "stock-opt" + (i === 0 ? " active" : "");
+      div.innerHTML = `<span class="code">${highlight(c.code, kw)}</span><span class="name">${highlight(c.name, kw)}</span>`;
+      div.addEventListener("mousedown", (e) => {
+        e.preventDefault();
+        selectCode(c);
+      });
+      stockDropdown.appendChild(div);
+    });
+  }
+  stockDropdown.classList.add("open");
+}
+
+function selectCode(c) {
+  selectedCode = c.code;
+  stockInput.value = `${c.code}  ${c.name}`;
+  stockDropdown.classList.remove("open");
+  loadDates();
+}
+
+stockInput.addEventListener("focus", () => {
+  const kw = stockInput.value.trim();
+  const res = kw ? searchCodes(kw) : allCodes;
+  showDropdown(res, kw);
+});
+
+stockInput.addEventListener("input", () => {
+  const kw = stockInput.value.trim();
+  const res = kw ? searchCodes(kw) : allCodes;
+  showDropdown(res, kw);
+});
+
+stockInput.addEventListener("blur", () => {
+  setTimeout(() => stockDropdown.classList.remove("open"), 150);
+});
+
+stockInput.addEventListener("keydown", (e) => {
+  const items = stockDropdown.querySelectorAll(".stock-opt");
+  let cur = [...items].findIndex(el => el.classList.contains("active"));
+  if (e.key === "ArrowDown") {
+    e.preventDefault();
+    if (cur >= 0) items[cur].classList.remove("active");
+    cur = (cur + 1) % items.length;
+    items[cur].classList.add("active");
+    items[cur].scrollIntoView({ block: "nearest" });
+  } else if (e.key === "ArrowUp") {
+    e.preventDefault();
+    if (cur >= 0) items[cur].classList.remove("active");
+    cur = (cur - 1 + items.length) % items.length;
+    items[cur].classList.add("active");
+    items[cur].scrollIntoView({ block: "nearest" });
+  } else if (e.key === "Enter") {
+    if (cur >= 0) items[cur].dispatchEvent(new MouseEvent("mousedown"));
+  } else if (e.key === "Escape") {
+    stockDropdown.classList.remove("open");
+  }
+});
+
+function searchCodes(kw) {
+  const k = kw.toLowerCase();
+  return allCodes.filter(c =>
+    c.code.includes(k) || c.name.toLowerCase().includes(k)
+  );
+}
+
+// ─── 加载股票列表 ────────────────────────────────────────────────────────────
+async function loadCodes() {
+  const res = await fetch("/api/codes");
+  allCodes  = await res.json();
+  if (allCodes.length === 0) {
+    stockInput.placeholder = "暂无数据，请先运行 collector.py";
+    return;
+  }
+  // 默认选第一只
+  selectCode(allCodes[0]);
+}
+
+// ─── 加载日期列表 ────────────────────────────────────────────────────────────
+async function loadDates() {
+  const code = selectedCode;
+  const res  = await fetch(`/api/dates?code=${code}`);
+  const dates = await res.json();
+  const sel   = document.getElementById("sel-date");
+  sel.innerHTML = "";
+  dates.forEach(d => {
+    const opt = document.createElement("option");
+    opt.value = d; opt.textContent = d;
+    sel.appendChild(opt);
+  });
+  if (dates.length > 0) await loadTicks();
+}
+
+// ─── 加载 tick 数据 ──────────────────────────────────────────────────────────
+async function loadTicks() {
+  stopTimer();
+  cursor = 0;
+  const code = selectedCode;
+  const date = document.getElementById("sel-date").value;
+
+  const [tickRes, sumRes] = await Promise.all([
+    fetch(`/api/ticks?code=${code}&date=${date}`),
+    fetch(`/api/summary?code=${code}&date=${date}`),
+  ]);
+  allTicks = await tickRes.json();
+  summary  = await sumRes.json();
+
+  // 根据实际数据重建全天时间轴
+  DAY_SLOTS = buildDaySlots(allTicks);
+
+  // 重置进度条
+  const prog = document.getElementById("progress");
+  prog.max   = Math.max(allTicks.length - 1, 0);
+  prog.value = 0;
+
+  // 更新静态信息栏
+  if (summary.pre_close !== undefined) {
+    setVal("iv-pre",  summary.pre_close.toFixed(2));
+    setVal("iv-open", summary.open.toFixed(2));
+    setVal("iv-high", summary.high.toFixed(2), "up");
+    setVal("iv-low",  summary.low.toFixed(2), "down");
+    setVal("iv-vol",  (summary.volume / 100).toFixed(0) + "手");
+    setVal("iv-amt",  fmtAmt(summary.amount));
+    setVal("iv-chg",  (summary.chg > 0 ? "+" : "") + summary.chg.toFixed(2), colorClass(summary.chg));
+    setVal("iv-pct",  (summary.pct > 0 ? "+" : "") + summary.pct.toFixed(2) + "%", colorClass(summary.pct));
+    setVal("iv-price",summary.close.toFixed(2), colorClass(summary.chg));
+  }
+
+  renderUpTo(0);
+}
+
+// ─── 全天分钟刻度（09:30-11:30, 13:00-15:30）────────────────────────────────
+// 动态生成：基础时段 + ticks 中超出范围的时间点
+function buildDaySlots(ticks) {
+  const base = [];
+  const addRange = (from, to) => {
+    for (let m = from; m <= to; m++) {
+      base.push(`${String(Math.floor(m/60)).padStart(2,'0')}:${String(m%60).padStart(2,'0')}`);
+    }
+  };
+  addRange(9*60+30, 11*60+30);  // 09:30 – 11:30
+  addRange(13*60,   15*60+30);   // 13:00 – 15:30（含复盘/收盘竞价）
+  // 追加 ticks 中仍在范围外的分钟点（以防万一）
+  const baseSet = new Set(base);
+  const extras = new Set();
+  (ticks || []).forEach(t => {
+    const hhmm = t.ts.slice(11, 16);
+    if (!baseSet.has(hhmm)) extras.add(hhmm);
+  });
+  return [...base, ...[...extras].sort()];
+}
+let DAY_SLOTS = buildDaySlots([]);
+
+// ─── 渲染到第 n 条 tick ──────────────────────────────────────────────────────
+function renderUpTo(n) {
+  // 将 allTicks[0..n] 聚合到分钟槽
+  const slotPrice = {}, slotVol = {}, slotCumAmt = {}, slotCumVol = {};
+  let cumAmt = 0, cumVol = 0;
+  for (let i = 0; i <= Math.min(n, allTicks.length - 1); i++) {
+    const t   = allTicks[i];
+    const slot = t.ts.slice(11, 16);   // HH:MM
+    cumAmt += t.amount;
+    cumVol += t.volume;
+    slotPrice[slot]   = t.price;
+    slotCumAmt[slot]  = cumAmt;
+    slotCumVol[slot]  = cumVol;
+    slotVol[slot]     = (slotVol[slot] || 0) + t.volume;
+  }
+
+  // x 轴固定全天
+  const prices  = DAY_SLOTS.map(s => slotPrice[s] ?? null);
+  const avgs    = DAY_SLOTS.map(s =>
+    slotCumVol[s] ? +(slotCumAmt[s] / slotCumVol[s]).toFixed(2) : null
+  );
+  const preArr  = DAY_SLOTS.map(() => summary.pre_close || null);
+  const volData = DAY_SLOTS.map(s => [
+    s,
+    slotVol[s] ?? null,
+    (slotPrice[s] ?? 0) >= (summary.pre_close || 0) ? "up" : "down",
+  ]);
+
+  chartPrice.setOption({
+    xAxis: { data: DAY_SLOTS },
+    series: [{ data: prices }, { data: avgs }, { data: preArr }],
+  });
+  chartVolume.setOption({
+    xAxis: { data: DAY_SLOTS },
+    series: [{ data: volData }],
+  });
+
+  // 更新进度条和时间标签
+  document.getElementById("progress").value = n;
+  const curTick = allTicks[n] || null;
+  if (n >= 0 && allTicks.length > 0) {
+    document.getElementById("replay-clock").textContent = allTicks[n].ts.slice(11, 16);
+    document.getElementById("time-label").textContent = `(${n+1} / ${allTicks.length})`;
+  } else {
+    document.getElementById("replay-clock").textContent = "--:--";
+    document.getElementById("time-label").textContent = "";
+  }
+
+  // 实时更新最新价
+  if (curTick && summary.pre_close) {
+    const chg  = +(curTick.price - summary.pre_close).toFixed(2);
+    const pct  = +(chg / summary.pre_close * 100).toFixed(2);
+    setVal("iv-price", curTick.price.toFixed(2), colorClass(chg));
+    setVal("iv-chg",   (chg > 0 ? "+" : "") + chg.toFixed(2), colorClass(chg));
+    setVal("iv-pct",   (pct > 0 ? "+" : "") + pct.toFixed(2) + "%", colorClass(chg));
+  }
+
+  // 更新买卖盘口
+  updateOrderBook(curTick);
+}
+
+// ─── 播放控制 ────────────────────────────────────────────────────────────────
+function getInterval() {
+  // 新浪数据约每3s一条；1x倍速就是3s步进一帧，5x就是600ms
+  const speed = parseInt(document.getElementById("sel-speed").value);
+  return Math.max(50, Math.round(3000 / speed));
+}
+
+function play() {
+  if (timer) return;
+  if (cursor >= allTicks.length - 1) cursor = 0;
+  timer = setInterval(() => {
+    if (cursor >= allTicks.length - 1) {
+      stopTimer();
+      return;
+    }
+    cursor++;
+    renderUpTo(cursor);
+  }, getInterval());
+}
+
+function pause() {
+  stopTimer();
+}
+
+function stopTimer() {
+  if (timer) { clearInterval(timer); timer = null; }
+}
+
+function resetReplay() {
+  stopTimer();
+  cursor = 0;
+  renderUpTo(0);
+}
+
+function seekTo(n) {
+  stopTimer();
+  cursor = n;
+  renderUpTo(n);
+}
+
+// ─── 事件绑定 ────────────────────────────────────────────────────────────────
+document.getElementById("sel-date").addEventListener("change", loadTicks);
+document.getElementById("sel-speed").addEventListener("change", () => {
+  if (timer) { stopTimer(); play(); }  // 重新以新倍速播放
+});
+
+// ─── 初始化 ──────────────────────────────────────────────────────────────────
+loadCodes();
+</script>
+</body>
+</html>

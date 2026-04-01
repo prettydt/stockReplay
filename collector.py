@@ -1,0 +1,371 @@
+"""
+分时数据采集器
+
+单只股票模式：
+    python collector.py --code sz300502
+
+全A股模式（自动从东方财富获取股票列表，批量采集）：
+    python collector.py --all
+    python collector.py --all --interval 10
+"""
+
+import sqlite3
+import time
+import datetime
+import argparse
+import requests
+import os
+import re
+from typing import Optional, List, Dict
+
+DB_PATH = os.path.join(os.path.dirname(__file__), "data", "stock.db")
+
+# 新浪实时行情接口（支持批量，逗号分隔）
+SINA_URL = "http://hq.sinajs.cn/list={code}"
+HEADERS = {
+    "Referer": "https://finance.sina.com.cn",
+    "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36"
+}
+
+BATCH_SIZE = 200
+STOCK_LIST_CACHE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data", "stock_list.json")
+
+# 东方财富股票列表接口（主备两个地址）
+EMF_LIST_URLS = [
+    (
+        "http://push2.eastmoney.com/api/qt/clist/get"
+        "?pn={page}&pz={size}&po=1&np=1"
+        "&ut=bd1d9ddb04089700cf9c27f6f7426281"
+        "&fltt=2&invt=2&fid=f3"
+        "&fs=m:0+t:6,m:0+t:80,m:1+t:2,m:1+t:23,m:0+t:81+s:2048"
+        "&fields=f12,f13,f14"
+    ),
+    (
+        "http://80.push2.eastmoney.com/api/qt/clist/get"
+        "?pn={page}&pz={size}&po=1&np=1"
+        "&ut=bd1d9ddb04089700cf9c27f6f7426281"
+        "&fltt=2&invt=2&fid=f3"
+        "&fs=m:0+t:6,m:0+t:80,m:1+t:2,m:1+t:23,m:0+t:81+s:2048"
+        "&fields=f12,f13,f14"
+    ),
+]
+
+
+def init_db():
+    conn = sqlite3.connect(DB_PATH)
+    cur = conn.cursor()
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS tick (
+            id        INTEGER PRIMARY KEY AUTOINCREMENT,
+            code      TEXT    NOT NULL,
+            trade_date TEXT   NOT NULL,
+            ts        TEXT    NOT NULL,
+            price     REAL    NOT NULL,
+            volume    REAL    NOT NULL,
+            amount    REAL    NOT NULL,
+            open      REAL    NOT NULL,
+            high      REAL    NOT NULL,
+            low       REAL    NOT NULL,
+            pre_close REAL    NOT NULL,
+            b1p REAL, b1v REAL, b2p REAL, b2v REAL, b3p REAL, b3v REAL,
+            b4p REAL, b4v REAL, b5p REAL, b5v REAL,
+            a1p REAL, a1v REAL, a2p REAL, a2v REAL, a3p REAL, a3v REAL,
+            a4p REAL, a4v REAL, a5p REAL, a5v REAL
+        )
+    """)
+    # 迁移：为旧数据库补加买卖五档字段
+    cur.execute("PRAGMA table_info(tick)")
+    existing_cols = {row[1] for row in cur.fetchall()}
+    ob_cols = ["b1p","b1v","b2p","b2v","b3p","b3v","b4p","b4v","b5p","b5v",
+               "a1p","a1v","a2p","a2v","a3p","a3v","a4p","a4v","a5p","a5v"]
+    for col in ob_cols:
+        if col not in existing_cols:
+            cur.execute(f"ALTER TABLE tick ADD COLUMN {col} REAL")
+    cur.execute("""
+        CREATE UNIQUE INDEX IF NOT EXISTS ux_tick_code_ts
+        ON tick(code, ts)
+    """)
+    # 股票名称缓存表
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS stock_name (
+            code TEXT PRIMARY KEY,
+            name TEXT NOT NULL
+        )
+    """)
+    conn.commit()
+    conn.close()
+
+
+def get_all_codes() -> List[Dict]:
+    """从东方财富获取全A股代码列表，优先读当日本地缓存。"""
+    import json
+
+    # 读缓存（当天有效）
+    today = datetime.date.today().isoformat()
+    if os.path.exists(STOCK_LIST_CACHE):
+        try:
+            with open(STOCK_LIST_CACHE, "r", encoding="utf-8") as f:
+                cached = json.load(f)
+            if cached.get("date") == today and cached.get("stocks"):
+                print(f"[INFO] 使用本地股票列表缓存（{len(cached['stocks'])} 只）")
+                return cached["stocks"]
+        except Exception:
+            pass
+
+    result = []
+    market_map = {0: "sz", 1: "sh"}
+    page_size = 500
+    print("[INFO] 正在从东方财富获取全A股列表...")
+
+    for base_url in EMF_LIST_URLS:
+        result = []
+        page = 1
+        success = True
+        while True:
+            url = base_url.format(page=page, size=page_size)
+            try:
+                resp = requests.get(url, headers={"User-Agent": "Mozilla/5.0"}, timeout=10)
+                if not resp.text.strip():
+                    break
+                data = resp.json()
+            except Exception as e:
+                print(f"[WARN] page={page} 失败: {e}")
+                if page == 1:
+                    success = False  # 第一页就失败，换备用地址
+                break
+            items = (data.get("data") or {}).get("diff") or []
+            if not items:
+                break
+            for item in items:
+                mkt = item.get("f13", -1)
+                code_num = item.get("f12", "")
+                name = item.get("f14", "")
+                if mkt in market_map and code_num:
+                    result.append({"code": f"{market_map[mkt]}{code_num}", "name": name})
+            total = (data.get("data") or {}).get("total", 0)
+            if len(result) >= total:
+                break
+            page += 1
+
+        if result and success:
+            break  # 主地址成功，不用备用
+
+    if not result:
+        print("[ERROR] 无法获取股票列表，主备地址均失败")
+        return []
+
+    print(f"[INFO] 共获取 {len(result)} 只股票")
+
+    # 写缓存
+    try:
+        os.makedirs(os.path.dirname(STOCK_LIST_CACHE), exist_ok=True)
+        with open(STOCK_LIST_CACHE, "w", encoding="utf-8") as f:
+            json.dump({"date": today, "stocks": result}, f, ensure_ascii=False)
+    except Exception as e:
+        print(f"[WARN] 缓存写入失败: {e}")
+
+    return result
+
+
+def fetch_batch(codes: List[str]) -> Dict[str, dict]:
+    """
+    批量从新浪拉取行情，返回 {code: {name, price, ...}, ...}
+    codes 格式: ['sz000001', 'sh600000', ...]
+    """
+    batch_str = ",".join(codes)
+    url = SINA_URL.format(code=batch_str)
+    try:
+        resp = requests.get(url, headers=HEADERS, timeout=10)
+        resp.encoding = "gbk"
+        text = resp.text
+    except Exception as e:
+        print(f"[ERROR] 批量请求失败: {e}")
+        return {}
+
+    result = {}
+    # 每行格式: var hq_str_sz000001="平安银行,11.09,...,2026-04-01,09:30:03,...";
+    for line in text.strip().split("\n"):
+        # 提取代码
+        code_m = re.search(r'hq_str_([^=]+)=', line)
+        val_m  = re.search(r'"([^"]+)"', line)
+        if not code_m or not val_m:
+            continue
+        code  = code_m.group(1)
+        parts = val_m.group(1).split(",")
+        if len(parts) < 32 or not parts[0]:
+            continue
+        try:
+            price = float(parts[3])
+            if price <= 0:
+                continue  # 停牌或无效
+            def _f(idx): return float(parts[idx]) if len(parts) > idx else 0.0
+            result[code] = {
+                "name":      parts[0],
+                "open":      float(parts[1]),
+                "pre_close": float(parts[2]),
+                "price":     price,
+                "high":      float(parts[4]),
+                "low":       float(parts[5]),
+                "volume":    float(parts[8]),
+                "amount":    float(parts[9]),
+                "date":      parts[30],
+                "time":      parts[31],
+                # 买一~买五：量(手), 价
+                "b1v": _f(10), "b1p": _f(11),
+                "b2v": _f(12), "b2p": _f(13),
+                "b3v": _f(14), "b3p": _f(15),
+                "b4v": _f(16), "b4p": _f(17),
+                "b5v": _f(18), "b5p": _f(19),
+                # 卖一~卖五：量(手), 价
+                "a1v": _f(20), "a1p": _f(21),
+                "a2v": _f(22), "a2p": _f(23),
+                "a3v": _f(24), "a3p": _f(25),
+                "a4v": _f(26), "a4p": _f(27),
+                "a5v": _f(28), "a5p": _f(29),
+            }
+        except (ValueError, IndexError):
+            continue
+    return result
+
+
+def save_batch(batch_data: Dict[str, dict]):
+    """批量写入数据库"""
+    if not batch_data:
+        return
+    conn = sqlite3.connect(DB_PATH)
+    cur = conn.cursor()
+    rows = []
+    names = []
+    for code, d in batch_data.items():
+        ts = f"{d['date']} {d['time']}"
+        rows.append((
+            code, d["date"], ts,
+            d["price"], d["volume"], d["amount"],
+            d["open"], d["high"], d["low"], d["pre_close"],
+            d.get("b1p"), d.get("b1v"), d.get("b2p"), d.get("b2v"),
+            d.get("b3p"), d.get("b3v"), d.get("b4p"), d.get("b4v"),
+            d.get("b5p"), d.get("b5v"),
+            d.get("a1p"), d.get("a1v"), d.get("a2p"), d.get("a2v"),
+            d.get("a3p"), d.get("a3v"), d.get("a4p"), d.get("a4v"),
+            d.get("a5p"), d.get("a5v"),
+        ))
+        names.append((code, d["name"]))
+    cur.executemany("""
+        INSERT INTO tick
+        (code, trade_date, ts, price, volume, amount, open, high, low, pre_close,
+         b1p, b1v, b2p, b2v, b3p, b3v, b4p, b4v, b5p, b5v,
+         a1p, a1v, a2p, a2v, a3p, a3v, a4p, a4v, a5p, a5v)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+        ON CONFLICT(code, ts) DO UPDATE SET
+          price=excluded.price, volume=excluded.volume, amount=excluded.amount,
+          open=excluded.open, high=excluded.high, low=excluded.low,
+          b1p=excluded.b1p, b1v=excluded.b1v, b2p=excluded.b2p, b2v=excluded.b2v,
+          b3p=excluded.b3p, b3v=excluded.b3v, b4p=excluded.b4p, b4v=excluded.b4v,
+          b5p=excluded.b5p, b5v=excluded.b5v,
+          a1p=excluded.a1p, a1v=excluded.a1v, a2p=excluded.a2p, a2v=excluded.a2v,
+          a3p=excluded.a3p, a3v=excluded.a3v, a4p=excluded.a4p, a4v=excluded.a4v,
+          a5p=excluded.a5p, a5v=excluded.a5v
+    """, rows)
+    cur.executemany("""
+        INSERT OR REPLACE INTO stock_name (code, name) VALUES (?,?)
+    """, names)
+    conn.commit()
+    conn.close()
+    return len(rows)
+
+
+def fetch_tick(code: str) -> Optional[dict]:
+    """单只股票拉取（保留兼容）"""
+    result = fetch_batch([code])
+    return result.get(code)
+
+
+def save_tick(code: str, data: dict):
+    """单只股票写入（保留兼容）"""
+    save_batch({code: data})
+
+
+def is_trading() -> bool:
+    """判断当前是否在交易时间（工作日 9:15-15:05，留出缓冲）"""
+    now = datetime.datetime.now()
+    if now.weekday() >= 5:  # 周六日
+        return False
+    t = now.time()
+    morning_start = datetime.time(9, 15)
+    morning_end   = datetime.time(11, 35)
+    afternoon_start = datetime.time(12, 55)
+    afternoon_end   = datetime.time(15, 5)
+    return (morning_start <= t <= morning_end) or (afternoon_start <= t <= afternoon_end)
+
+
+def run(code: str, interval: int = 3):
+    """单只股票采集模式"""
+    init_db()
+    print(f"[INFO] 开始采集 {code}，间隔 {interval}s，Ctrl+C 停止")
+    while True:
+        if is_trading():
+            data = fetch_tick(code)
+            if data:
+                save_tick(code, data)
+                print(f"[{data['date']} {data['time']}] {data['name']} "
+                      f"价格={data['price']} 成交量={data['volume']}手")
+        else:
+            print(f"[{datetime.datetime.now().strftime('%H:%M:%S')}] 非交易时间，等待...")
+            time.sleep(60)
+            continue
+        time.sleep(interval)
+
+
+def run_all(interval: int = 10):
+    """全A股批量采集模式"""
+    init_db()
+    stock_list = get_all_codes()
+    if not stock_list:
+        print("[ERROR] 无法获取股票列表，退出")
+        return
+
+    all_codes = [s["code"] for s in stock_list]
+    print(f"[INFO] 全A股模式：{len(all_codes)} 只，间隔 {interval}s，Ctrl+C 停止")
+
+    while True:
+        if not is_trading():
+            print(f"[{datetime.datetime.now().strftime('%H:%M:%S')}] 非交易时间，等待...")
+            time.sleep(60)
+            continue
+
+        round_start = time.time()
+        total_saved = 0
+        valid_count = 0
+
+        # 分批请求
+        for i in range(0, len(all_codes), BATCH_SIZE):
+            batch = all_codes[i:i + BATCH_SIZE]
+            batch_data = fetch_batch(batch)
+            n = save_batch(batch_data)
+            total_saved += n or 0
+            valid_count += len(batch_data)
+
+        elapsed = time.time() - round_start
+        now_str = datetime.datetime.now().strftime("%H:%M:%S")
+        print(f"[{now_str}] 采集完成：{valid_count} 只有效 / {len(all_codes)} 只，写入 {total_saved} 条，耗时 {elapsed:.1f}s")
+
+        # 动态等待，确保整体间隔为 interval 秒
+        wait = max(1, interval - elapsed)
+        time.sleep(wait)
+
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="分时数据采集器")
+    parser.add_argument("--code", default="", help="单只股票代码，例如 sz300502")
+    parser.add_argument("--all", action="store_true", help="采集全A股（约5800只）")
+    parser.add_argument("--interval", type=int, default=10, help="采集间隔（秒），默认10")
+    args = parser.parse_args()
+    try:
+        if args.all:
+            run_all(args.interval)
+        elif args.code:
+            run(args.code, args.interval)
+        else:
+            parser.print_help()
+    except KeyboardInterrupt:
+        print("\n[INFO] 采集已停止")
