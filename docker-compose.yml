@@ -38,7 +38,7 @@ services:
     build: .
     container_name: stock_replay_collector
     restart: unless-stopped
-    command: ["python", "collector.py", "--all", "--interval", "10"]
+    command: ["python", "collector.py", "--all", "--interval", "3"]
     environment:
       MYSQL_HOST: mysql
       MYSQL_PORT: 3306
