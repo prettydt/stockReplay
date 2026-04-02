@@ -120,9 +120,12 @@ def get_all_codes() -> List[Dict]:
         try:
             with open(STOCK_LIST_CACHE, "r", encoding="utf-8") as f:
                 cached = json.load(f)
-            if cached.get("date") == today and cached.get("stocks"):
-                print(f"[INFO] 使用本地股票列表缓存（{len(cached['stocks'])} 只）")
-                return cached["stocks"]
+            stocks = cached.get("stocks", [])
+            if cached.get("date") == today and len(stocks) >= 3000:
+                print(f"[INFO] 使用本地股票列表缓存（{len(stocks)} 只）")
+                return stocks
+            elif cached.get("date") == today and stocks:
+                print(f"[WARN] 本地缓存只有 {len(stocks)} 只，重新拉取")
         except Exception:
             pass
 
