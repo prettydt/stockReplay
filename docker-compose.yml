@@ -58,5 +58,25 @@ services:
       mysql:
         condition: service_healthy
 
+  monitor:
+    build: .
+    container_name: stock_replay_monitor
+    restart: unless-stopped
+    command: ["python", "monitor.py", "--interval", "60", "--watch-limit", "30"]
+    environment:
+      MYSQL_HOST: mysql
+      MYSQL_PORT: 3306
+      MYSQL_USER: root
+      MYSQL_PASSWORD: ""
+      MYSQL_DB: stock_replay
+      TZ: Asia/Shanghai
+    volumes:
+      - ./data:/app/data
+    depends_on:
+      mysql:
+        condition: service_healthy
+      collector:
+        condition: service_started
+
 volumes:
   mysql_data:
