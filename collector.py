@@ -250,8 +250,13 @@ def fetch_batch(codes: List[str]) -> Dict[str, dict]:
     return result
 
 
-def save_batch(batch_data: Dict[str, dict]):
-    """批量写入数据库"""
+def save_batch(batch_data: Dict[str, dict], collect_ts: str = None):
+    """
+    批量写入数据库。
+    collect_ts: 采集时刻（服务器时间），格式 'YYYY-MM-DD HH:MM:SS'。
+                以采集时间为 ts，保证每轮采集都能生成新行。
+                为 None 时回退到新浪返回的交易时间（兼容快照脚本）。
+    """
     if not batch_data:
         return
     conn = get_conn()
@@ -259,7 +264,7 @@ def save_batch(batch_data: Dict[str, dict]):
     rows = []
     names = []
     for code, d in batch_data.items():
-        ts = f"{d['date']} {d['time']}"
+        ts = collect_ts if collect_ts else f"{d['date']} {d['time']}"
         rows.append((
             code, d["date"], ts,
             d["price"], d["volume"], d["amount"],
@@ -399,6 +404,8 @@ def run_all(interval: int = 10):
             active_codes = get_active_codes(all_codes)
 
         round_start = time.time()
+        # 以本轮采集开始时刻作为所有 tick 的时间戳
+        collect_ts = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         total_saved = 0
         valid_count = 0
 
@@ -406,7 +413,7 @@ def run_all(interval: int = 10):
         for i in range(0, len(active_codes), BATCH_SIZE):
             batch = active_codes[i:i + BATCH_SIZE]
             batch_data = fetch_batch(batch)
-            n = save_batch(batch_data)
+            n = save_batch(batch_data, collect_ts=collect_ts)
             total_saved += n or 0
             valid_count += len(batch_data)
 
