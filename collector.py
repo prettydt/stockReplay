@@ -185,15 +185,23 @@ def fetch_batch(codes: List[str]) -> Dict[str, dict]:
     """
     批量从新浪拉取行情，返回 {code: {name, price, ...}, ...}
     codes 格式: ['sz000001', 'sh600000', ...]
+    DNS失败时自动重试最多3次。
     """
     batch_str = ",".join(codes)
     url = SINA_URL.format(code=batch_str)
-    try:
-        resp = requests.get(url, headers=HEADERS, timeout=10)
-        resp.encoding = "gbk"
-        text = resp.text
-    except Exception as e:
-        print(f"[ERROR] 批量请求失败: {e}")
+    text = None
+    for attempt in range(3):
+        try:
+            resp = requests.get(url, headers=HEADERS, timeout=10)
+            resp.encoding = "gbk"
+            text = resp.text
+            break
+        except Exception as e:
+            wait = 5 * (attempt + 1)  # 5s, 10s, 15s
+            print(f"[WARN] 批量请求失败(第{attempt+1}次): {e}，{wait}s后重试...")
+            time.sleep(wait)
+    if text is None:
+        print(f"[ERROR] 批量请求连续失败3次，跳过本批次")
         return {}
 
     result = {}
