@@ -126,6 +126,10 @@ def get_all_codes() -> List[Dict]:
                 return stocks
             elif cached.get("date") == today and stocks:
                 print(f"[WARN] 本地缓存只有 {len(stocks)} 只，重新拉取")
+            elif len(stocks) >= 3000:
+                # 网络不稳定时，允许使用最近一天的足量缓存，避免采集器因拉取列表失败而退出。
+                print(f"[WARN] 使用过期股票列表缓存（{cached.get('date')}，{len(stocks)} 只）")
+                return stocks
         except Exception:
             pass
 
