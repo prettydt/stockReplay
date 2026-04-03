@@ -31,8 +31,8 @@ DB_CONFIG = {
     "charset": "utf8mb4",
     "cursorclass": pymysql.cursors.DictCursor,
     "connect_timeout": 5,
-    "read_timeout": 8,
-    "write_timeout": 8,
+    "read_timeout": 30,
+    "write_timeout": 30,
 }
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -140,15 +140,13 @@ def fetch_watch_codes(limit: int = 30) -> List[str]:
 
 
 def get_global_metrics(today: str) -> Dict:
+    """轻量实时指标：避免每分钟全表聚合造成超时。"""
     conn = get_conn()
     cur = conn.cursor()
 
     cur.execute(
         """
-        SELECT COUNT(*) AS rows_today,
-               COUNT(DISTINCT code) AS codes_today,
-               MIN(ts) AS min_ts,
-               MAX(ts) AS max_ts
+        SELECT MAX(ts) AS max_ts
         FROM tick
         WHERE trade_date=%s
         """,
@@ -158,8 +156,7 @@ def get_global_metrics(today: str) -> Dict:
 
     cur.execute(
         """
-        SELECT COUNT(*) AS rows_5m,
-               COUNT(DISTINCT code) AS codes_5m
+                SELECT COUNT(*) AS rows_5m
         FROM tick
         WHERE ts >= NOW() - INTERVAL 5 MINUTE
           AND trade_date=%s
@@ -180,13 +177,34 @@ def get_global_metrics(today: str) -> Dict:
         lag_seconds = int((datetime.datetime.now() - max_ts_dt).total_seconds())
 
     return {
-        "rows_today": int(base.get("rows_today") or 0),
-        "codes_today": int(base.get("codes_today") or 0),
-        "min_ts": str(base.get("min_ts") or ""),
         "max_ts": str(base.get("max_ts") or ""),
         "rows_5m": int(recent.get("rows_5m") or 0),
-        "codes_5m": int(recent.get("codes_5m") or 0),
         "lag_seconds": lag_seconds,
+    }
+
+
+def get_eod_metrics(today: str) -> Dict:
+    """较重指标，仅在收盘后执行一次。"""
+    conn = get_conn()
+    cur = conn.cursor()
+    cur.execute(
+        """
+        SELECT COUNT(*) AS rows_today,
+               COUNT(DISTINCT code) AS codes_today,
+               MIN(ts) AS min_ts,
+               MAX(ts) AS max_ts
+        FROM tick
+        WHERE trade_date=%s
+        """,
+        (today,),
+    )
+    row = cur.fetchone() or {}
+    conn.close()
+    return {
+        "rows_today": int(row.get("rows_today") or 0),
+        "codes_today": int(row.get("codes_today") or 0),
+        "min_ts": str(row.get("min_ts") or ""),
+        "max_ts": str(row.get("max_ts") or ""),
     }
 
 
@@ -235,7 +253,7 @@ def get_watch_metrics(today: str, watch_codes: List[str]) -> Dict:
 
 
 def run_eod_check(today: str, watch_codes: List[str]):
-    metrics = get_global_metrics(today)
+    metrics = get_eod_metrics(today)
     watch = get_watch_metrics(today, watch_codes)
 
     # 收盘完整性阈值：
@@ -281,6 +299,7 @@ def monitor_loop(interval: int, watch_limit: int):
         watch_codes = []
     print(f"[INFO] 监控启动，watch_codes={len(watch_codes)}，interval={interval}s")
     eod_done_date = ""
+    tick_count = 0
 
     while True:
         now = datetime.datetime.now()
@@ -288,7 +307,10 @@ def monitor_loop(interval: int, watch_limit: int):
 
         try:
             metrics = get_global_metrics(today)
-            watch = get_watch_metrics(today, watch_codes)
+            watch = {"watch_total": len(watch_codes), "watch_seen": 0, "watch_fresh": 0, "lagging_codes": []}
+            if is_trading_time(now) and watch_codes and tick_count % 5 == 0:
+                # 重点股票检查每5轮执行一次，降低数据库压力。
+                watch = get_watch_metrics(today, watch_codes)
             status = {
                 "date": today,
                 "is_trading": is_trading_time(now),
@@ -299,13 +321,13 @@ def monitor_loop(interval: int, watch_limit: int):
 
             if is_trading_time(now):
                 lag = metrics.get("lag_seconds")
-                if metrics["rows_today"] == 0 and now.time() > datetime.time(9, 40):
+                if not metrics["max_ts"] and now.time() > datetime.time(9, 40):
                     write_alert("ERROR", "交易时段仍无数据写入，请立即排查collector")
                 if lag is None:
                     write_alert("WARN", "交易时段 max_ts 为空，可能还未写入")
                 elif lag > 600:
                     write_alert("ERROR", f"检测到断流：全局最新数据延迟 {lag}s")
-                if metrics["rows_5m"] < 500:
+                if metrics["rows_5m"] < 100:
                     write_alert("WARN", f"最近5分钟写入偏少：rows_5m={metrics['rows_5m']}")
 
                 if watch["watch_total"] > 0:
@@ -321,6 +343,7 @@ def monitor_loop(interval: int, watch_limit: int):
         except Exception as e:
             write_alert("ERROR", f"监控异常: {e}")
 
+        tick_count += 1
         time.sleep(interval)
 
 
