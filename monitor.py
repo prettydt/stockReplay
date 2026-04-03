@@ -300,6 +300,7 @@ def monitor_loop(interval: int, watch_limit: int):
     print(f"[INFO] 监控启动，watch_codes={len(watch_codes)}，interval={interval}s")
     eod_done_date = ""
     tick_count = 0
+    watch = {"watch_total": len(watch_codes), "watch_seen": 0, "watch_fresh": 0, "lagging_codes": []}
 
     while True:
         now = datetime.datetime.now()
@@ -307,7 +308,6 @@ def monitor_loop(interval: int, watch_limit: int):
 
         try:
             metrics = get_global_metrics(today)
-            watch = {"watch_total": len(watch_codes), "watch_seen": 0, "watch_fresh": 0, "lagging_codes": []}
             if is_trading_time(now) and watch_codes and tick_count % 5 == 0:
                 # 重点股票检查每5轮执行一次，降低数据库压力。
                 watch = get_watch_metrics(today, watch_codes)
