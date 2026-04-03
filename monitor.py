@@ -30,6 +30,9 @@ DB_CONFIG = {
     "database": os.environ.get("MYSQL_DB", "stock_replay"),
     "charset": "utf8mb4",
     "cursorclass": pymysql.cursors.DictCursor,
+    "connect_timeout": 5,
+    "read_timeout": 8,
+    "write_timeout": 8,
 }
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -96,26 +99,44 @@ def fetch_watch_codes(limit: int = 30) -> List[str]:
     """取最近交易日成交额最高的一批股票作为重点监控对象。"""
     conn = get_conn()
     cur = conn.cursor()
-    cur.execute("SELECT MAX(trade_date) AS d FROM tick")
-    row = cur.fetchone() or {}
-    last_date = row.get("d")
-    if not last_date:
+    try:
+        cur.execute("SELECT MAX(trade_date) AS d FROM tick")
+        row = cur.fetchone() or {}
+        last_date = row.get("d")
+        if not last_date:
+            return []
+
+        # 可能在大表上较慢，先尝试按成交额选重点股票。
+        cur.execute(
+            """
+            SELECT code, MAX(amount) AS total_amount
+            FROM tick
+            WHERE trade_date=%s
+            GROUP BY code
+            ORDER BY total_amount DESC
+            LIMIT %s
+            """,
+            (last_date, limit),
+        )
+        result = [r["code"] for r in cur.fetchall()]
+        if result:
+            return result
+    except Exception as e:
+        write_alert("WARN", f"重点股票按成交额选取失败，降级为静态名单: {e}")
+    finally:
         conn.close()
+
+    # 降级：使用 stock_name 前 N 只，避免监控启动被卡住。
+    conn = get_conn()
+    cur = conn.cursor()
+    try:
+        cur.execute("SELECT code FROM stock_name ORDER BY code LIMIT %s", (limit,))
+        return [r["code"] for r in cur.fetchall()]
+    except Exception as e:
+        write_alert("WARN", f"重点股票静态名单选取失败: {e}")
         return []
-    cur.execute(
-        """
-        SELECT code, MAX(amount) AS total_amount
-        FROM tick
-        WHERE trade_date=%s
-        GROUP BY code
-        ORDER BY total_amount DESC
-        LIMIT %s
-        """,
-        (last_date, limit),
-    )
-    result = [r["code"] for r in cur.fetchall()]
-    conn.close()
-    return result
+    finally:
+        conn.close()
 
 
 def get_global_metrics(today: str) -> Dict:
@@ -253,7 +274,11 @@ def run_eod_check(today: str, watch_codes: List[str]):
 
 
 def monitor_loop(interval: int, watch_limit: int):
-    watch_codes = fetch_watch_codes(limit=watch_limit)
+    try:
+        watch_codes = fetch_watch_codes(limit=watch_limit)
+    except Exception as e:
+        write_alert("WARN", f"初始化重点股票失败，将继续运行: {e}")
+        watch_codes = []
     print(f"[INFO] 监控启动，watch_codes={len(watch_codes)}，interval={interval}s")
     eod_done_date = ""
 
