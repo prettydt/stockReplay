@@ -3,6 +3,12 @@ data/stock.db
 stock.db
 *.db
 
+# Sensitive runtime data
+data/member_db.json
+data/monitor_alerts.log
+data/monitor_status.json
+logs/
+
 # Python
 __pycache__/
 *.py[cod]

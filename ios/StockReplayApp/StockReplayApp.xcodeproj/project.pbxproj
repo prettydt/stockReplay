@@ -1,0 +1,489 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 77;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		2C8B412868F135F26ED2F69A /* APIClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = F97E65EF9DEBE9E14BE4EAC3 /* APIClient.swift */; };
+		44701C5C0640D39DB3F7D0A2 /* APIModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 77D6081DDA4651A6F7831CB0 /* APIModels.swift */; };
+		47BE79BE06B254672177B214 /* StockReplayApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 697BB30DA823EC5286C078F4 /* StockReplayApp.swift */; };
+		51029A1F632339EBF8D49210 /* SubscriptionView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B5884BC2C54F192B4B16BA10 /* SubscriptionView.swift */; };
+		70FA4D25BB3BD6C414DA953F /* SubscriptionView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B5884BC2C54F192B4B16BA10 /* SubscriptionView.swift */; };
+		84D3BB7B3F8B3FCB9B2D057E /* SubscriptionStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 77881182BC952F5047CB708D /* SubscriptionStore.swift */; };
+		9147155E939067AF6DC66A4D /* SubscriptionStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 77881182BC952F5047CB708D /* SubscriptionStore.swift */; };
+		954CF2793010A425DC06203F /* ReplayView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C52D9ED9FC744544CD48D204 /* ReplayView.swift */; };
+		9B6992C8DFD632A05921DD03 /* APIModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 77D6081DDA4651A6F7831CB0 /* APIModels.swift */; };
+		A294C975210E5B979718F735 /* APIClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = F97E65EF9DEBE9E14BE4EAC3 /* APIClient.swift */; };
+		A38788C182AFB47733F2AD1A /* StockReplayApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 697BB30DA823EC5286C078F4 /* StockReplayApp.swift */; };
+		C13FCA459F45601779EE62D1 /* AppSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8F15A403D82C1266B786BFEB /* AppSettings.swift */; };
+		C43B07CB653BA967E3EBF1A8 /* AppSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8F15A403D82C1266B786BFEB /* AppSettings.swift */; };
+		CC1DAEA37452AB9C7E6242E4 /* StockListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = EF3C2F14E81D6045C79293DA /* StockListView.swift */; };
+		EFC2579D8BF94924881B6C52 /* ReplayView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C52D9ED9FC744544CD48D204 /* ReplayView.swift */; };
+		F99F8C19E5B05F58B168127E /* StockListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = EF3C2F14E81D6045C79293DA /* StockListView.swift */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXFileReference section */
+		33C16127E1B17DA5E2E7DC6F /* StockReplayApp.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = StockReplayApp.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		6347342E542666FA1780A6F7 /* Info-macOS.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = "Info-macOS.plist"; sourceTree = "<group>"; };
+		697BB30DA823EC5286C078F4 /* StockReplayApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StockReplayApp.swift; sourceTree = "<group>"; };
+		77881182BC952F5047CB708D /* SubscriptionStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SubscriptionStore.swift; sourceTree = "<group>"; };
+		77D6081DDA4651A6F7831CB0 /* APIModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = APIModels.swift; sourceTree = "<group>"; };
+		7AD4D3B4055032807ACB90B4 /* StockReplayApp.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = StockReplayApp.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		8F15A403D82C1266B786BFEB /* AppSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppSettings.swift; sourceTree = "<group>"; };
+		A9A74A15324DA3145A46FD26 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
+		B5884BC2C54F192B4B16BA10 /* SubscriptionView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SubscriptionView.swift; sourceTree = "<group>"; };
+		C52D9ED9FC744544CD48D204 /* ReplayView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReplayView.swift; sourceTree = "<group>"; };
+		EF3C2F14E81D6045C79293DA /* StockListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StockListView.swift; sourceTree = "<group>"; };
+		F97E65EF9DEBE9E14BE4EAC3 /* APIClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = APIClient.swift; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXGroup section */
+		0A850F9716FB9892CDE0C3CE /* Features */ = {
+			isa = PBXGroup;
+			children = (
+				74D786E46D296C6B3655CED1 /* Replay */,
+				C66BD89B487E8066E37D2568 /* Stocks */,
+				8E5A2820345AC33CC865976A /* Subscription */,
+			);
+			path = Features;
+			sourceTree = "<group>";
+		};
+		59D90929A4B5A5BCCBC965DF /* Networking */ = {
+			isa = PBXGroup;
+			children = (
+				F97E65EF9DEBE9E14BE4EAC3 /* APIClient.swift */,
+			);
+			path = Networking;
+			sourceTree = "<group>";
+		};
+		74D786E46D296C6B3655CED1 /* Replay */ = {
+			isa = PBXGroup;
+			children = (
+				C52D9ED9FC744544CD48D204 /* ReplayView.swift */,
+			);
+			path = Replay;
+			sourceTree = "<group>";
+		};
+		8E5A2820345AC33CC865976A /* Subscription */ = {
+			isa = PBXGroup;
+			children = (
+				77881182BC952F5047CB708D /* SubscriptionStore.swift */,
+				B5884BC2C54F192B4B16BA10 /* SubscriptionView.swift */,
+			);
+			path = Subscription;
+			sourceTree = "<group>";
+		};
+		A885A06B863D4291F2E4B154 /* Support */ = {
+			isa = PBXGroup;
+			children = (
+				8F15A403D82C1266B786BFEB /* AppSettings.swift */,
+				6347342E542666FA1780A6F7 /* Info-macOS.plist */,
+				A9A74A15324DA3145A46FD26 /* Info.plist */,
+			);
+			path = Support;
+			sourceTree = "<group>";
+		};
+		B8DAC3484DFFC1532338B5AD /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				7AD4D3B4055032807ACB90B4 /* StockReplayApp.app */,
+				33C16127E1B17DA5E2E7DC6F /* StockReplayApp.app */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		BC10D50581734CA07F17965A /* App */ = {
+			isa = PBXGroup;
+			children = (
+				697BB30DA823EC5286C078F4 /* StockReplayApp.swift */,
+			);
+			path = App;
+			sourceTree = "<group>";
+		};
+		C66BD89B487E8066E37D2568 /* Stocks */ = {
+			isa = PBXGroup;
+			children = (
+				EF3C2F14E81D6045C79293DA /* StockListView.swift */,
+			);
+			path = Stocks;
+			sourceTree = "<group>";
+		};
+		DF72D76F51176B00ED0E06FB /* Models */ = {
+			isa = PBXGroup;
+			children = (
+				77D6081DDA4651A6F7831CB0 /* APIModels.swift */,
+			);
+			path = Models;
+			sourceTree = "<group>";
+		};
+		E6682AB8FA6B1E28FB65375C = {
+			isa = PBXGroup;
+			children = (
+				BC10D50581734CA07F17965A /* App */,
+				0A850F9716FB9892CDE0C3CE /* Features */,
+				DF72D76F51176B00ED0E06FB /* Models */,
+				59D90929A4B5A5BCCBC965DF /* Networking */,
+				A885A06B863D4291F2E4B154 /* Support */,
+				B8DAC3484DFFC1532338B5AD /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		129CD61DAB950A83D483E06A /* StockReplayApp-iOS */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 1C310EE794C25AE917154F87 /* Build configuration list for PBXNativeTarget "StockReplayApp-iOS" */;
+			buildPhases = (
+				40D29C19F12835AD408CBE7D /* Sources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = "StockReplayApp-iOS";
+			packageProductDependencies = (
+			);
+			productName = "StockReplayApp-iOS";
+			productReference = 7AD4D3B4055032807ACB90B4 /* StockReplayApp.app */;
+			productType = "com.apple.product-type.application";
+		};
+		C57CF15CF65C09B98B74E690 /* StockReplayApp-macOS */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 4EEBB96D30A9409D8380E8E6 /* Build configuration list for PBXNativeTarget "StockReplayApp-macOS" */;
+			buildPhases = (
+				780214A19DE1A5CFB24A8415 /* Sources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = "StockReplayApp-macOS";
+			packageProductDependencies = (
+			);
+			productName = "StockReplayApp-macOS";
+			productReference = 33C16127E1B17DA5E2E7DC6F /* StockReplayApp.app */;
+			productType = "com.apple.product-type.application";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		92A963724E62BECC4B8BF1D0 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = YES;
+				LastUpgradeCheck = 1430;
+				TargetAttributes = {
+					C57CF15CF65C09B98B74E690 = {
+						ProvisioningStyle = Automatic;
+					};
+				};
+			};
+			buildConfigurationList = 47F6562D604AF190A2CF5306 /* Build configuration list for PBXProject "StockReplayApp" */;
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				Base,
+				en,
+			);
+			mainGroup = E6682AB8FA6B1E28FB65375C;
+			minimizedProjectReferenceProxies = 1;
+			preferredProjectObjectVersion = 77;
+			productRefGroup = B8DAC3484DFFC1532338B5AD /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				129CD61DAB950A83D483E06A /* StockReplayApp-iOS */,
+				C57CF15CF65C09B98B74E690 /* StockReplayApp-macOS */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXSourcesBuildPhase section */
+		40D29C19F12835AD408CBE7D /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				A294C975210E5B979718F735 /* APIClient.swift in Sources */,
+				9B6992C8DFD632A05921DD03 /* APIModels.swift in Sources */,
+				C13FCA459F45601779EE62D1 /* AppSettings.swift in Sources */,
+				EFC2579D8BF94924881B6C52 /* ReplayView.swift in Sources */,
+				F99F8C19E5B05F58B168127E /* StockListView.swift in Sources */,
+				47BE79BE06B254672177B214 /* StockReplayApp.swift in Sources */,
+				84D3BB7B3F8B3FCB9B2D057E /* SubscriptionStore.swift in Sources */,
+				51029A1F632339EBF8D49210 /* SubscriptionView.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		780214A19DE1A5CFB24A8415 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				2C8B412868F135F26ED2F69A /* APIClient.swift in Sources */,
+				44701C5C0640D39DB3F7D0A2 /* APIModels.swift in Sources */,
+				C43B07CB653BA967E3EBF1A8 /* AppSettings.swift in Sources */,
+				954CF2793010A425DC06203F /* ReplayView.swift in Sources */,
+				CC1DAEA37452AB9C7E6242E4 /* StockListView.swift in Sources */,
+				A38788C182AFB47733F2AD1A /* StockReplayApp.swift in Sources */,
+				9147155E939067AF6DC66A4D /* SubscriptionStore.swift in Sources */,
+				70FA4D25BB3BD6C414DA953F /* SubscriptionView.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin XCBuildConfiguration section */
+		68BD56DBF04BBFCC2D8B8A93 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "Apple Development";
+				CODE_SIGN_STYLE = Automatic;
+				COMBINE_HIDPI_IMAGES = YES;
+				DEVELOPMENT_TEAM = 52XQ84HH45;
+				INFOPLIST_FILE = "Support/Info-macOS.plist";
+				INFOPLIST_KEY_NSAppTransportSecurity_NSAllowsArbitraryLoads = YES;
+				INFOPLIST_KEY_NSHumanReadableCopyright = PrettyDT;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.prettydt.StockReplayApp;
+				PRODUCT_NAME = StockReplayApp;
+				SDKROOT = macosx;
+				SWIFT_VERSION = 5.1;
+			};
+			name = Release;
+		};
+		6EB2CAE2CFE6ECA9DB501CEA /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				"CODE_SIGNING_ALLOWED[sdk=iphoneos*]" = NO;
+				"CODE_SIGNING_ALLOWED[sdk=iphonesimulator*]" = NO;
+				"CODE_SIGNING_REQUIRED[sdk=iphoneos*]" = NO;
+				CODE_SIGN_IDENTITY = "Apple Development";
+				CODE_SIGN_STYLE = Automatic;
+				DEVELOPMENT_TEAM = 52XQ84HH45;
+				INFOPLIST_FILE = Support/Info.plist;
+				INFOPLIST_KEY_NSAppTransportSecurity_NSAllowsArbitraryLoads = YES;
+				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.prettydt.StockReplayApp;
+				PRODUCT_NAME = StockReplayApp;
+				PROVISIONING_PROFILE_SPECIFIER = "";
+				SDKROOT = iphoneos;
+				SWIFT_VERSION = 5.1;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		740BCE2792D55C91BCBAC0ED /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "Apple Development";
+				CODE_SIGN_STYLE = Automatic;
+				COMBINE_HIDPI_IMAGES = YES;
+				DEVELOPMENT_TEAM = 52XQ84HH45;
+				INFOPLIST_FILE = "Support/Info-macOS.plist";
+				INFOPLIST_KEY_NSAppTransportSecurity_NSAllowsArbitraryLoads = YES;
+				INFOPLIST_KEY_NSHumanReadableCopyright = PrettyDT;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.prettydt.StockReplayApp;
+				PRODUCT_NAME = StockReplayApp;
+				SDKROOT = macosx;
+				SWIFT_VERSION = 5.1;
+			};
+			name = Debug;
+		};
+		9B93D32919C178F266680C07 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				SWIFT_VERSION = 5.0;
+			};
+			name = Release;
+		};
+		D911ED4C738D25542D976F84 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				"CODE_SIGNING_ALLOWED[sdk=iphoneos*]" = NO;
+				"CODE_SIGNING_ALLOWED[sdk=iphonesimulator*]" = NO;
+				"CODE_SIGNING_REQUIRED[sdk=iphoneos*]" = NO;
+				CODE_SIGN_IDENTITY = "Apple Development";
+				CODE_SIGN_STYLE = Automatic;
+				DEVELOPMENT_TEAM = 52XQ84HH45;
+				INFOPLIST_FILE = Support/Info.plist;
+				INFOPLIST_KEY_NSAppTransportSecurity_NSAllowsArbitraryLoads = YES;
+				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.prettydt.StockReplayApp;
+				PRODUCT_NAME = StockReplayApp;
+				PROVISIONING_PROFILE_SPECIFIER = "";
+				SDKROOT = iphoneos;
+				SWIFT_VERSION = 5.1;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+		F1E87374511C82B194A287CF /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"$(inherited)",
+					"DEBUG=1",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 5.0;
+			};
+			name = Debug;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		1C310EE794C25AE917154F87 /* Build configuration list for PBXNativeTarget "StockReplayApp-iOS" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				6EB2CAE2CFE6ECA9DB501CEA /* Debug */,
+				D911ED4C738D25542D976F84 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		47F6562D604AF190A2CF5306 /* Build configuration list for PBXProject "StockReplayApp" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				F1E87374511C82B194A287CF /* Debug */,
+				9B93D32919C178F266680C07 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		4EEBB96D30A9409D8380E8E6 /* Build configuration list for PBXNativeTarget "StockReplayApp-macOS" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				740BCE2792D55C91BCBAC0ED /* Debug */,
+				68BD56DBF04BBFCC2D8B8A93 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = 92A963724E62BECC4B8BF1D0 /* Project object */;
+}

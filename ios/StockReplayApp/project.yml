@@ -1,0 +1,61 @@
+name: StockReplayApp
+options:
+  bundleIdPrefix: com.prettydt
+configs:
+  Debug: debug
+  Release: release
+targets:
+  StockReplayApp-iOS:
+    type: application
+    platform: iOS
+    deploymentTarget: "17.0"
+    sources:
+      - path: App
+      - path: Features
+      - path: Models
+      - path: Networking
+      - path: Support
+        excludes:
+          - Info-macOS.plist
+    info:
+      path: Support/Info.plist
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.prettydt.StockReplayApp
+        PRODUCT_NAME: StockReplayApp
+        SWIFT_VERSION: 5.10
+        TARGETED_DEVICE_FAMILY: "1,2"
+        CODE_SIGN_STYLE: Manual
+        CODE_SIGN_IDENTITY: ""
+        DEVELOPMENT_TEAM: ""
+        PROVISIONING_PROFILE_SPECIFIER: ""
+        "CODE_SIGNING_ALLOWED[sdk=iphoneos*]": NO
+        "CODE_SIGNING_ALLOWED[sdk=iphonesimulator*]": NO
+        "CODE_SIGNING_REQUIRED[sdk=iphoneos*]": NO
+        INFOPLIST_KEY_UIApplicationSceneManifest_Generation: YES
+        INFOPLIST_KEY_UILaunchScreen_Generation: YES
+        INFOPLIST_KEY_NSAppTransportSecurity_NSAllowsArbitraryLoads: YES
+
+  StockReplayApp-macOS:
+    type: application
+    platform: macOS
+    deploymentTarget: "14.0"
+    sources:
+      - path: App
+      - path: Features
+      - path: Models
+      - path: Networking
+      - path: Support
+        excludes:
+          - Info.plist
+    info:
+      path: Support/Info-macOS.plist
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.prettydt.StockReplayApp.mac
+        PRODUCT_NAME: StockReplayApp
+        SWIFT_VERSION: 5.10
+        CODE_SIGN_STYLE: Automatic
+        DEVELOPMENT_TEAM: ""
+        INFOPLIST_KEY_NSHumanReadableCopyright: PrettyDT
+        INFOPLIST_KEY_NSAppTransportSecurity_NSAllowsArbitraryLoads: YES
