@@ -313,30 +313,37 @@ def save_batch(batch_data: Dict[str, dict], collect_ts: str = None):
 
 def get_active_codes(all_codes: List[str], min_amount: float = 1e8) -> List[str]:
     """
-    返回前一交易日总成交额 >= min_amount 的股票代码列表。
+    返回各股票自身最近一个交易日总成交额 >= min_amount 的股票代码列表。
+    每只股票独立取其最新 trade_date，避免因个别股票当日漏采而被错误剔除。
     若数据库中无历史数据（首次运行），返回全部代码。
     """
     try:
         conn = get_conn()
         cur = conn.cursor()
-        # 找到最近一个有数据的交易日
+        # 检查是否有任何历史数据
         cur.execute("SELECT MAX(trade_date) AS d FROM tick")
         row = cur.fetchone()
-        last_date = row["d"] if row else None
-        if not last_date:
+        if not (row and row["d"]):
             conn.close()
             print("[INFO] 无历史数据，本日采集全部股票")
             return all_codes
-        # 查询该日各股票总成交额
+        # 每只股票取其自身最新一天的最大累计成交额
+        # 用 JOIN 代替相关子查询，在大表上性能更优
         cur.execute("""
-            SELECT code, MAX(amount) AS total_amount
-            FROM tick WHERE trade_date=%s GROUP BY code
-        """, (last_date,))
+            SELECT t.code, MAX(t.amount) AS total_amount
+            FROM tick t
+            INNER JOIN (
+                SELECT code, MAX(trade_date) AS max_date
+                FROM tick
+                GROUP BY code
+            ) m ON t.code = m.code AND t.trade_date = m.max_date
+            GROUP BY t.code
+        """)
         active = {r["code"] for r in cur.fetchall() if (r["total_amount"] or 0) >= min_amount}
         conn.close()
         result = [c for c in all_codes if c in active]
         filtered = len(all_codes) - len(result)
-        print(f"[INFO] 前一交易日({last_date})成交额过滤："
+        print(f"[INFO] 按各股自身最新交易日成交额过滤："
               f"保留 {len(result)} 只，排除 {filtered} 只（<{min_amount/1e8:.0f}亿）")
         return result if result else all_codes  # 保底：若全被过滤则返回全部
     except Exception as e:
