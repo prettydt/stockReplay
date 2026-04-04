@@ -184,6 +184,16 @@ final class AppSettings: ObservableObject {
     @Published var selectedTheme: AppTheme {
         didSet { persist() }
     }
+    /// 复盘快捷键（单字符字符串，"space" 代表空格）
+    @Published var replayKeyPlay: String {
+        didSet { persist() }
+    }
+    @Published var replayKeyPrev: String {
+        didSet { persist() }
+    }
+    @Published var replayKeyNext: String {
+        didSet { persist() }
+    }
     @Published var membershipStatus: MemberStatusResponse?
     @Published var membershipMessage: String = "免费版可查看最近 7 个交易日"
     @Published var backendStatusMessage: String = "尚未检测后端连接"
@@ -215,6 +225,12 @@ final class AppSettings: ObservableObject {
         }
         self.selectedTheme = defaults.string(forKey: "ios.theme").flatMap(AppTheme.init(rawValue:)) ?? .default
         self.globalSelectedDate = defaults.string(forKey: "ios.globalSelectedDate") ?? ""
+        self.replayKeyPlay = defaults.string(forKey: "ios.replayKeyPlay") ?? "space"
+        // 将旧的字母键默认值迁移为方向键
+        let rawPrev = defaults.string(forKey: "ios.replayKeyPrev") ?? "left"
+        self.replayKeyPrev = rawPrev == "a" ? "left" : rawPrev
+        let rawNext = defaults.string(forKey: "ios.replayKeyNext") ?? "right"
+        self.replayKeyNext = rawNext == "d" ? "right" : rawNext
         self.apiClient = APIClient(baseURLString: savedBaseURL)
     }
 
@@ -234,6 +250,9 @@ final class AppSettings: ObservableObject {
         }
         defaults.set(selectedTheme.rawValue, forKey: "ios.theme")
         defaults.set(globalSelectedDate, forKey: "ios.globalSelectedDate")
+        defaults.set(replayKeyPlay, forKey: "ios.replayKeyPlay")
+        defaults.set(replayKeyPrev, forKey: "ios.replayKeyPrev")
+        defaults.set(replayKeyNext, forKey: "ios.replayKeyNext")
     }
 
     func updateBaseURL(_ newValue: String) {
@@ -304,7 +323,7 @@ final class AppSettings: ObservableObject {
         let normalizedAccount = accountID.trimmingCharacters(in: .whitespacesAndNewlines)
         let normalizedAfdian = afdianUID.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !normalizedAccount.isEmpty || !normalizedAfdian.isEmpty || !memberToken.isEmpty else {
-            membershipMessage = "请先填写账号或爱发电 UID，再同步 Apple 订阅。"
+            membershipMessage = "请先填写账号或登录邮箱，再同步 Apple 订阅。"
             return
         }
 

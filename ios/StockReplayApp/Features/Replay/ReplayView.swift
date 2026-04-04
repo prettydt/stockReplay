@@ -132,7 +132,13 @@ final class ReplayViewModel: ObservableObject {
             )
             self.summary = try await summary
             self.ticks = try await ticks
-            self.currentIndex = 0
+            // 跳过集合竞价，从 09:30 正式开盘开始
+            let openSeconds = 9 * 3600 + 30 * 60
+            self.currentIndex = self.ticks.firstIndex { tick in
+                let parts = tick.shortTime.split(separator: ":").compactMap { Int($0) }
+                guard parts.count == 3 else { return false }
+                return parts[0] * 3600 + parts[1] * 60 + parts[2] >= openSeconds
+            } ?? 0
         } catch {
             self.summary = nil
             self.ticks = []
@@ -192,6 +198,11 @@ struct ReplayDetailView: View {
     @State private var selectedReplayType: ReplayMarkType = .breakout
     @State private var paneSyncID = UUID()
     @State private var isApplyingExternalSync = false
+    @State private var showShortcutSettings = false
+    @State private var hoverIndex: Int? = nil
+    #if os(macOS)
+    @State private var keyEventMonitor: Any? = nil
+    #endif
 
     init(stock: StockCode, syncEnabled: Bool = false) {
         self.stock = stock
@@ -222,6 +233,16 @@ struct ReplayDetailView: View {
             return ReplayNoteMarker(note: note, index: index, price: markerPrice)
         }
     }
+    // 当前悬停或回放 tick（悬停优先）
+    private var displayTick: TickRecord? {
+        if let h = hoverIndex, chartTicks.indices.contains(h) { return chartTicks[h] }
+        return viewModel.currentTick
+    }
+    private var displayAvgPrice: Double? {
+        let idx = hoverIndex ?? (chartTicks.isEmpty ? nil : viewModel.currentIndex)
+        guard let idx, averagePricePoints.indices.contains(idx) else { return averagePricePoints.last?.value }
+        return averagePricePoints[idx].value
+    }
     private var previousClose: Double? { viewModel.summary?.preClose ?? chartTicks.first?.preClose }
     private var dailyLimitRate: Double {
         (stock.code.hasPrefix("sz300") || stock.code.hasPrefix("sh688")) ? 0.20 : 0.10
@@ -236,7 +257,6 @@ struct ReplayDetailView: View {
             ReplayTimeBookmark(id: "tail", title: "尾盘", subtitle: "收盘前", targetIndex: nearestIndex(for: "14:45:00") ?? fallbackIndex(0.9))
         ]
     }
-    private var upperLimitPrice: Double? { previousClose.map { $0 * (1 + dailyLimitRate) } }
     private var lowerLimitPrice: Double? { previousClose.map { $0 * (1 - dailyLimitRate) } }
     private var lastPriceColor: Color {
         guard let tick = viewModel.currentTick else { return theme.accentColor }
@@ -390,11 +410,127 @@ struct ReplayDetailView: View {
         .onChange(of: settings.compareSyncSignal) { _, _ in
             applyExternalSyncIfNeeded()
         }
+        #if os(macOS)
+        .onAppear { installKeyMonitor() }
+        .onDisappear { removeKeyMonitor() }
+        .onChange(of: settings.replayKeyPlay) { _, _ in reinstallKeyMonitor() }
+        .onChange(of: settings.replayKeyPrev) { _, _ in reinstallKeyMonitor() }
+        .onChange(of: settings.replayKeyNext) { _, _ in reinstallKeyMonitor() }
+        #endif
+    }
+
+    #if os(macOS)
+    private func installKeyMonitor() {
+        guard keyEventMonitor == nil else { return }
+        keyEventMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [self] event in
+            // 如果当前焦点在文本输入框内，不拦截
+            if let responder = NSApp.keyWindow?.firstResponder,
+               responder is NSTextView || responder is NSTextField {
+                return event
+            }
+            func matches(_ setting: String) -> Bool {
+                switch setting.lowercased() {
+                case "space":  return event.keyCode == 49
+                case "left":   return event.keyCode == 123
+                case "right":  return event.keyCode == 124
+                case "up":     return event.keyCode == 126
+                case "down":   return event.keyCode == 125
+                default:       return event.charactersIgnoringModifiers?.lowercased() == setting.lowercased()
+                }
+            }
+            let speedSteps: [Double] = [1, 2, 4, 8]
+            if matches(settings.replayKeyPlay) {
+                Task { @MainActor in viewModel.togglePlayback() }
+                return nil
+            } else if matches(settings.replayKeyPrev) {
+                Task { @MainActor in viewModel.currentIndex = max(0, viewModel.currentIndex - 1) }
+                return nil
+            } else if matches(settings.replayKeyNext) {
+                Task { @MainActor in viewModel.currentIndex = min(viewModel.ticks.count - 1, viewModel.currentIndex + 1) }
+                return nil
+            } else if event.keyCode == 126 { // up arrow → speed up
+                Task { @MainActor in
+                    if let next = speedSteps.first(where: { $0 > viewModel.playbackSpeed }) {
+                        viewModel.playbackSpeed = next
+                    }
+                }
+                return nil
+            } else if event.keyCode == 125 { // down arrow → speed down
+                Task { @MainActor in
+                    if let prev = speedSteps.last(where: { $0 < viewModel.playbackSpeed }) {
+                        viewModel.playbackSpeed = prev
+                    }
+                }
+                return nil
+            }
+            return event
+        }
+    }
+
+    private func removeKeyMonitor() {
+        if let monitor = keyEventMonitor {
+            NSEvent.removeMonitor(monitor)
+            keyEventMonitor = nil
+        }
+    }
+
+    private func reinstallKeyMonitor() {
+        removeKeyMonitor()
+        installKeyMonitor()
+    }
+    #endif
+
+    private var shortcutSettingsPopover: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("复盘快捷键")
+                .font(.headline)
+            Text("输入单个字母或 \"space\"")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            Divider()
+            shortcutRow("播放 / 暂停", binding: $settings.replayKeyPlay)
+            shortcutRow("上一 Tick", binding: $settings.replayKeyPrev)
+            shortcutRow("下一 Tick", binding: $settings.replayKeyNext)
+            Divider()
+            Button("恢复默认") {
+                settings.replayKeyPlay = "space"
+                settings.replayKeyPrev = "left"
+                settings.replayKeyNext = "right"
+            }
+            .font(.caption)
+            .foregroundStyle(.secondary)
+        }
+        .padding()
+        .frame(width: 240)
+    }
+
+    private func shortcutRow(_ label: String, binding: Binding<String>) -> some View {
+        HStack {
+            Text(label)
+                .font(.callout)
+            Spacer()
+            TextField("", text: binding)
+                .textFieldStyle(.roundedBorder)
+                .frame(width: 64)
+                .multilineTextAlignment(.center)
+                .onChange(of: binding.wrappedValue) { _, newVal in
+                    // 只保留首字符（或保留 "space"）
+                    if newVal.lowercased() != "space" && newVal.count > 1 {
+                        binding.wrappedValue = String(newVal.suffix(1))
+                    }
+                }
+        }
     }
 
     private var desktopReplayWorkspace: some View {
         VStack(alignment: .leading, spacing: 14) {
-            timelinePlaybackCard
+            HStack(alignment: .top, spacing: 14) {
+                timelinePlaybackCard
+                    .frame(maxWidth: .infinity)
+
+                tickSnapshotCard
+                    .frame(width: 320)
+            }
 
             HStack(alignment: .top, spacing: 14) {
                 VStack(alignment: .leading, spacing: 14) {
@@ -552,6 +688,7 @@ struct ReplayDetailView: View {
                 VStack(spacing: 16) {
                     sessionStatusCard
                     timelinePlaybackCard
+                    tickSnapshotCard
                     replayNotesCard
                     orderBookCard
                     recentTradesCard
@@ -562,6 +699,7 @@ struct ReplayDetailView: View {
             VStack(spacing: 16) {
                 sessionStatusCard
                 timelinePlaybackCard
+                tickSnapshotCard
                 priceChartCard
                 volumeChartCard
                 replayNotesCard
@@ -636,25 +774,89 @@ struct ReplayDetailView: View {
         .replayCardStyle(theme: theme)
     }
 
+    // MARK: - 图表顶部紧凑信息栏
+    private var chartInfoBar: some View {
+        let tick = displayTick
+        let avgPrice = displayAvgPrice
+        let isHovering = hoverIndex != nil
+        let timeStr = tick?.shortTime ?? "--:--:--"
+        let priceStr = tick?.price.map { String(format: "%.2f", $0) } ?? "--"
+        let avgStr = avgPrice.map { String(format: "%.2f", $0) } ?? "--"
+        let changeAmt = tick?.priceChange ?? 0
+        let changePct = tick?.priceChangePercent ?? 0
+        let volStr = formattedShares(tick?.volume)
+        let amtStr = formattedTurnover(tick?.amount)
+        let changeColor: Color = changeAmt >= 0 ? theme.positiveColor : theme.negativeColor
+        return HStack(spacing: 0) {
+            chartInfoItem("时间", timeStr, color: .primary)
+            chartInfoItem("价格", priceStr, color: changeColor)
+            chartInfoItem("均价", avgStr, color: .yellow)
+            chartInfoItem("涨额", String(format: "%+.2f", changeAmt), color: changeColor)
+            chartInfoItem("涨幅", String(format: "%+.2f%%", changePct), color: changeColor)
+            chartInfoItem("量", volStr, color: .primary)
+            chartInfoItem("额", amtStr, color: .primary)
+            Spacer()
+            if !isHovering {
+                Text("当前数据")
+                    .font(.caption2)
+                    .foregroundStyle(theme.accentColor)
+            }
+        }
+        .font(.caption2.monospacedDigit())
+        .padding(.horizontal, 4)
+        .padding(.vertical, 5)
+        .background(theme.cardBackground.opacity(0.9))
+        .clipShape(RoundedRectangle(cornerRadius: 6))
+    }
+
+    private func chartInfoItem(_ label: String, _ value: String, color: Color) -> some View {
+        HStack(spacing: 3) {
+            Text(label)
+                .foregroundStyle(.secondary)
+            Text(value)
+                .foregroundStyle(color)
+        }
+        .padding(.horizontal, 7)
+    }
+
+    private var upperLimitPrice: Double? { previousClose.map { $0 * (1 + dailyLimitRate) } }
+
     private var priceChartCard: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack(alignment: .top) {
+        VStack(alignment: .leading, spacing: 6) {
+            // 标题行
+            HStack {
                 Text("分时价格")
                     .font(.headline)
                 Spacer()
-                inspectionInfoBox
             }
+
+            // 紧凑信息栏（hover 时显示 hover 数据，否则显示当前播放数据）
+            chartInfoBar
 
             Chart {
                 ForEach(Array(chartTicks.enumerated()), id: \.offset) { index, tick in
                     if let price = tick.price {
                         LineMark(
                             x: .value("序号", index),
-                            y: .value("价格", price)
+                            y: .value("价格", price),
+                            series: .value("系列", "price")
                         )
                         .foregroundStyle(theme.chartLineColor)
                         .interpolationMethod(.linear)
+                        .lineStyle(StrokeStyle(lineWidth: 1.5))
                     }
+                }
+
+                // 均价线
+                ForEach(averagePricePoints, id: \.index) { point in
+                    LineMark(
+                        x: .value("序号", point.index),
+                        y: .value("均价", point.value),
+                        series: .value("系列", "avg")
+                    )
+                    .foregroundStyle(Color.yellow)
+                    .interpolationMethod(.linear)
+                    .lineStyle(StrokeStyle(lineWidth: 1.5))
                 }
 
                 if let previousClose {
@@ -677,21 +879,26 @@ struct ReplayDetailView: View {
                     }
                 }
 
-                if let currentTick = viewModel.currentTick, let currentPrice = currentTick.price {
-                    RuleMark(x: .value("游标", viewModel.currentIndex))
-                        .foregroundStyle(theme.accentColor.opacity(0.9))
+                // 回放游标（hover 时改为显示 hover 位置）
+                let cursorIndex = hoverIndex ?? viewModel.currentIndex
+                if chartTicks.indices.contains(cursorIndex),
+                   let cursorPrice = chartTicks[cursorIndex].price {
+                    let cursorColor: Color = hoverIndex != nil ? .white.opacity(0.85) : lastPriceColor
+
+                    RuleMark(x: .value("游标", cursorIndex))
+                        .foregroundStyle(hoverIndex != nil ? Color.white.opacity(0.7) : theme.accentColor.opacity(0.9))
                         .lineStyle(StrokeStyle(lineWidth: 1, dash: [4, 4]))
 
-                    RuleMark(y: .value("价格横线", currentPrice))
-                        .foregroundStyle(lastPriceColor.opacity(0.75))
+                    RuleMark(y: .value("价格横线", cursorPrice))
+                        .foregroundStyle(cursorColor.opacity(0.75))
                         .lineStyle(StrokeStyle(lineWidth: 1, dash: [4, 4]))
 
                     PointMark(
-                        x: .value("游标", viewModel.currentIndex),
-                        y: .value("价格", currentPrice)
+                        x: .value("游标", cursorIndex),
+                        y: .value("价格", cursorPrice)
                     )
-                    .foregroundStyle(lastPriceColor)
-                    .symbolSize(40)
+                    .foregroundStyle(cursorColor)
+                    .symbolSize(hoverIndex != nil ? 55 : 40)
                 }
             }
             .chartYScale(domain: priceAxisDomain)
@@ -729,39 +936,32 @@ struct ReplayDetailView: View {
                 }
             }
             .frame(height: 240)
+            .chartOverlay { proxy in
+                GeometryReader { geo in
+                    Rectangle()
+                        .fill(.clear)
+                        .contentShape(Rectangle())
+                        #if os(macOS)
+                        .onContinuousHover { phase in
+                            switch phase {
+                            case .active(let location):
+                                guard let plotFrame = proxy.plotFrame else { return }
+                                let xInPlot = location.x - geo[plotFrame].origin.x
+                                if let rawIndex: Int = proxy.value(atX: xInPlot) {
+                                    hoverIndex = max(0, min(rawIndex, chartTicks.count - 1))
+                                }
+                            case .ended:
+                                hoverIndex = nil
+                            }
+                        }
+                        #endif
+                }
+            }
         }
         .padding()
         .replayCardStyle(theme: theme)
     }
 
-    private var inspectionInfoBox: some View {
-        VStack(alignment: .leading, spacing: 5) {
-            HStack {
-                Text(viewModel.currentTick?.shortTime ?? "--:--:--")
-                    .font(.caption.bold())
-                Spacer()
-                Text("当前数据")
-                    .font(.caption2)
-                    .foregroundStyle(theme.accentColor)
-            }
-
-            Divider()
-
-            infoLine("价格", viewModel.currentTick?.price.map { String(format: "%.2f", $0) } ?? "--", color: lastPriceColor)
-            infoLine("涨跌", String(format: "%+.2f%%", viewModel.currentTick?.priceChangePercent ?? 0), color: lastPriceColor)
-            infoLine("成交量", formattedShares(viewModel.currentTick?.volume))
-            infoLine("成交额", formattedTurnover(viewModel.currentTick?.amount))
-        }
-        .font(.caption2.monospacedDigit())
-        .padding(10)
-        .frame(minWidth: 150)
-        .background(theme.cardBackground.opacity(0.98))
-        .overlay(
-            RoundedRectangle(cornerRadius: 10)
-                .stroke(theme.accentColor.opacity(0.25), lineWidth: 1)
-        )
-        .clipShape(RoundedRectangle(cornerRadius: 10))
-    }
 
     private var volumeChartCard: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -819,11 +1019,7 @@ struct ReplayDetailView: View {
 
     private var timelinePlaybackCard: some View {
         VStack(alignment: .leading, spacing: 10) {
-            // 日期选择
-            HStack(spacing: 8) {
-                Text("交易日")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+            HStack(spacing: 10) {
                 Picker("", selection: $viewModel.selectedDate) {
                     ForEach(viewModel.availableDates, id: \.self) { date in
                         Text(date).tag(date)
@@ -834,98 +1030,185 @@ struct ReplayDetailView: View {
                     settings.globalSelectedDate = newDate
                     Task { await viewModel.loadReplay(for: stock, settings: settings) }
                 }
+
+                Spacer()
+
+                HStack(alignment: .firstTextBaseline, spacing: 10) {
+                    Text(viewModel.currentTick?.shortTime ?? "--:--:--")
+                        .font(.system(size: 24, weight: .bold, design: .rounded))
+                        .foregroundStyle(theme.accentColor)
+
+                    Text(viewModel.progressLabel)
+                        .font(.headline.monospacedDigit())
+                        .foregroundStyle(.secondary)
+                }
+            }
+
+            Slider(value: playbackSliderValue, in: playbackSliderRange, step: 1)
+                .disabled(viewModel.ticks.count <= 1)
+                .tint(theme.accentColor)
+
+            HStack {
+                Spacer()
+
+                HStack(spacing: 10) {
+                    Button {
+                        viewModel.stopPlayback()
+                        viewModel.currentIndex = 0
+                    } label: {
+                        Image(systemName: "backward.end.fill")
+                    }
+                    .buttonStyle(.bordered)
+
+                    Button {
+                        viewModel.currentIndex = max(0, viewModel.currentIndex - 1)
+                    } label: {
+                        Image(systemName: "backward.frame.fill")
+                    }
+                    .buttonStyle(.bordered)
+                    .disabled(viewModel.currentIndex <= 0)
+
+                    Button {
+                        viewModel.togglePlayback()
+                    } label: {
+                        Image(systemName: viewModel.isPlaying ? "pause.fill" : "play.fill")
+                            .frame(width: 34, height: 20)
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .tint(theme.accentColor)
+
+                    Button {
+                        viewModel.currentIndex = min(viewModel.ticks.count - 1, viewModel.currentIndex + 1)
+                    } label: {
+                        Image(systemName: "forward.frame.fill")
+                    }
+                    .buttonStyle(.bordered)
+                    .disabled(viewModel.currentIndex >= viewModel.ticks.count - 1)
+
+                    Button {
+                        let steps: [Double] = [1, 2, 4, 8]
+                        let next = steps.first(where: { $0 > viewModel.playbackSpeed }) ?? steps[0]
+                        viewModel.playbackSpeed = next
+                    } label: {
+                        Text(viewModel.playbackSpeed.truncatingRemainder(dividingBy: 1) == 0
+                             ? "\(Int(viewModel.playbackSpeed))x"
+                             : "\(viewModel.playbackSpeed)x")
+                            .monospacedDigit()
+                            .frame(minWidth: 40)
+                    }
+                    .buttonStyle(.bordered)
+
+                    Button {
+                        showShortcutSettings.toggle()
+                    } label: {
+                        Image(systemName: "keyboard")
+                            .foregroundStyle(.secondary)
+                    }
+                    .buttonStyle(.borderless)
+                    .help("配置复盘快捷键")
+                    .popover(isPresented: $showShortcutSettings, arrowEdge: .bottom) {
+                        shortcutSettingsPopover
+                    }
+                }
+
+                Spacer()
+            }
+        }
+        .padding(12)
+        .replayCardStyle(theme: theme)
+    }
+
+    private var tickSnapshotCard: some View {
+        tickSnapshotPanel
+            .padding(10)
+            .replayCardStyle(theme: theme)
+    }
+
+    private var tickSnapshotPanel: some View {
+        let tick = viewModel.currentTick
+        let currentPrice = tick?.price ?? viewModel.summary?.close
+        let changeValue = tick?.priceChange ?? viewModel.summary?.chg ?? 0
+        let changePercent = tick?.priceChangePercent ?? viewModel.summary?.pct ?? 0
+        let priceColor: Color = changeValue >= 0 ? theme.positiveColor : theme.negativeColor
+        let avg = averagePricePoints.last?.value
+
+        var metrics: [(String, String, Color)] = []
+        if let open = tick?.open ?? viewModel.summary?.open {
+            metrics.append(("今开", String(format: "%.2f", open), .primary))
+        }
+        if let preClose = tick?.preClose ?? viewModel.summary?.preClose {
+            metrics.append(("昨收", String(format: "%.2f", preClose), .primary))
+        }
+        if let high = tick?.high ?? viewModel.summary?.high {
+            metrics.append(("最高", String(format: "%.2f", high), theme.positiveColor))
+        }
+        if let low = tick?.low ?? viewModel.summary?.low {
+            metrics.append(("最低", String(format: "%.2f", low), theme.negativeColor))
+        }
+        if let avg {
+            metrics.append(("均价", String(format: "%.2f", avg), .yellow))
+        }
+        if let amount = tick?.amount ?? viewModel.summary?.amount {
+            metrics.append(("金额", formattedTurnover(amount), .primary))
+        }
+
+        return VStack(alignment: .leading, spacing: 8) {
+            HStack(alignment: .top) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(stock.code.replacingOccurrences(of: "sh", with: "").replacingOccurrences(of: "sz", with: ""))
+                        .font(.subheadline.weight(.semibold))
+                    Text(stock.name)
+                        .font(.headline.bold())
+                        .lineLimit(1)
+                }
+                Spacer()
+                Text(tick?.shortTime ?? "--:--:--")
+                    .font(.caption.monospacedDigit())
+                    .foregroundStyle(.secondary)
+            }
+
+            HStack(alignment: .firstTextBaseline, spacing: 6) {
+                Text(currentPrice.map { String(format: "%.2f", $0) } ?? "--")
+                    .font(.system(size: 24, weight: .bold, design: .rounded))
+                    .foregroundStyle(priceColor)
+
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(String(format: "%+.2f", changeValue))
+                    Text(String(format: "%+.2f%%", changePercent))
+                }
+                .font(.caption.monospacedDigit().weight(.semibold))
+                .foregroundStyle(priceColor)
             }
 
             Divider()
 
-            // 大时钟 + 当前价格
-            HStack(alignment: .firstTextBaseline) {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(viewModel.currentTick?.shortTime ?? "--:--:--")
-                        .font(.system(size: 26, weight: .bold, design: .rounded))
-                        .foregroundStyle(theme.accentColor)
-                    Text(viewModel.progressLabel)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+            LazyVGrid(
+                columns: [
+                    GridItem(.flexible(), alignment: .leading),
+                    GridItem(.flexible(), alignment: .leading)
+                ],
+                alignment: .leading,
+                spacing: 6
+            ) {
+                ForEach(Array(metrics.enumerated()), id: \.offset) { _, item in
+                    snapshotMetricCell(item.0, item.1, color: item.2)
                 }
-                Spacer()
-                if let tick = viewModel.currentTick {
-                    VStack(alignment: .trailing, spacing: 2) {
-                        Text(String(format: "%.2f", tick.price ?? 0))
-                            .font(.title3.bold())
-                            .foregroundStyle(tick.priceChange >= 0 ? theme.positiveColor : theme.negativeColor)
-                        Text(String(format: "%+.2f%%", tick.priceChangePercent))
-                            .font(.caption)
-                            .foregroundStyle(tick.priceChange >= 0 ? theme.positiveColor : theme.negativeColor)
-                    }
-                }
-            }
-
-            // 进度条
-            Slider(
-                value: playbackSliderValue,
-                in: playbackSliderRange,
-                step: 1
-            )
-            .disabled(viewModel.ticks.count <= 1)
-            .tint(theme.accentColor)
-
-            // QuickTime 风格：⏮ ◀ ⏯ ▶ 倍速
-            HStack(spacing: 8) {
-                // 1. 重置到起点
-                Button {
-                    viewModel.stopPlayback()
-                    viewModel.currentIndex = 0
-                } label: {
-                    Image(systemName: "backward.end.fill")
-                }
-                .buttonStyle(.bordered)
-
-                // 2. 上一 tick
-                Button {
-                    viewModel.currentIndex = max(0, viewModel.currentIndex - 1)
-                } label: {
-                    Image(systemName: "backward.frame.fill")
-                }
-                .buttonStyle(.bordered)
-                .disabled(viewModel.currentIndex <= 0)
-
-                // 3. 播放 / 暂停（主按钮，撑满剩余空间）
-                Button {
-                    viewModel.togglePlayback()
-                } label: {
-                    Image(systemName: viewModel.isPlaying ? "pause.fill" : "play.fill")
-                        .frame(maxWidth: .infinity)
-                }
-                .buttonStyle(.borderedProminent)
-                .tint(theme.accentColor)
-
-                // 4. 下一 tick
-                Button {
-                    viewModel.currentIndex = min(viewModel.ticks.count - 1, viewModel.currentIndex + 1)
-                } label: {
-                    Image(systemName: "forward.frame.fill")
-                }
-                .buttonStyle(.bordered)
-                .disabled(viewModel.currentIndex >= viewModel.ticks.count - 1)
-
-                // 5. 倍速循环切换
-                Button {
-                    let steps: [Double] = [1, 2, 4, 8]
-                    let next = steps.first(where: { $0 > viewModel.playbackSpeed }) ?? steps[0]
-                    viewModel.playbackSpeed = next
-                } label: {
-                    Text(viewModel.playbackSpeed.truncatingRemainder(dividingBy: 1) == 0
-                         ? "\(Int(viewModel.playbackSpeed))x"
-                         : "\(viewModel.playbackSpeed)x")
-                        .monospacedDigit()
-                        .frame(minWidth: 36)
-                }
-                .buttonStyle(.bordered)
             }
         }
-        .padding()
-        .replayCardStyle(theme: theme)
+    }
+
+    private func snapshotMetricCell(_ title: String, _ value: String, color: Color = .primary) -> some View {
+        VStack(alignment: .leading, spacing: 1) {
+            Text(title)
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+            Text(value)
+                .font(.subheadline.monospacedDigit().weight(.semibold))
+                .foregroundStyle(color)
+                .lineLimit(1)
+                .minimumScaleFactor(0.8)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private var replayNotesCard: some View {
@@ -1019,7 +1302,7 @@ struct ReplayDetailView: View {
                 Text("成交明细")
                     .font(.headline)
                 Spacer()
-                Text("最近 \(recentTrades.count) 笔")
+                Text("共 \(viewModel.visibleTicks.count) 笔")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -1029,7 +1312,7 @@ struct ReplayDetailView: View {
                     .font(.footnote)
                     .foregroundStyle(.secondary)
             } else {
-                VStack(spacing: 6) {
+                VStack(spacing: 0) {
                     HStack {
                         Text("时间")
                         Spacer()
@@ -1039,19 +1322,25 @@ struct ReplayDetailView: View {
                     }
                     .font(.caption)
                     .foregroundStyle(.secondary)
+                    .padding(.bottom, 4)
 
-                    ForEach(recentTrades) { tick in
-                        HStack {
-                            Text(tick.shortTime)
-                            Spacer()
-                            Text(String(format: "%.2f", tick.price ?? 0))
-                                .foregroundStyle(tick.priceChange >= 0 ? theme.positiveColor : theme.negativeColor)
-                            Text("\(Int((tick.volume ?? 0) / 100))")
-                                .frame(width: 56, alignment: .trailing)
-                                .foregroundStyle(.secondary)
+                    ScrollView(.vertical, showsIndicators: true) {
+                        VStack(spacing: 6) {
+                            ForEach(viewModel.visibleTicks.reversed()) { tick in
+                                HStack {
+                                    Text(tick.shortTime)
+                                    Spacer()
+                                    Text(String(format: "%.2f", tick.price ?? 0))
+                                        .foregroundStyle(tick.priceChange >= 0 ? theme.positiveColor : theme.negativeColor)
+                                    Text("\(Int((tick.volume ?? 0) / 100))")
+                                        .frame(width: 56, alignment: .trailing)
+                                        .foregroundStyle(.secondary)
+                                }
+                                .font(.footnote.monospacedDigit())
+                            }
                         }
-                        .font(.footnote.monospacedDigit())
                     }
+                    .frame(height: 140)
                 }
             }
         }
